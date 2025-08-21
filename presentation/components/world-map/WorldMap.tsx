@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import WorldMapTile, { TileType } from './WorldMapTile';
 import CharacterStatusPanel from './CharacterStatusPanel';
 import { getContainer } from '../../../infrastructure/config/DIContainer';
@@ -32,6 +32,10 @@ const WorldMap: React.FC<WorldMapProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [monstersById, setMonstersById] = useState<Record<string, {name: string, type: string}>>({});
+  const [hpRestorationMessage, setHpRestorationMessage] = useState<string | null>(null);
+  
+  // Ref to store the HP restoration interval
+  const hpRestorationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Constants for viewport and map size
   const VIEWPORT_SIZE = 15;
@@ -122,9 +126,65 @@ const WorldMap: React.FC<WorldMapProps> = ({
     }
   }, [worldMapId, characterId, worldMapService, characterService, enemyService, monsterService]);
 
+  // HP Restoration System
+  const startHPRestorationSystem = useCallback(() => {
+    // Clear any existing interval
+    if (hpRestorationIntervalRef.current) {
+      clearInterval(hpRestorationIntervalRef.current);
+    }
+    
+    // Set up a new interval that runs every 5 seconds
+    hpRestorationIntervalRef.current = setInterval(async () => {
+      try {
+        // Get current character data
+        const character = await characterService.getCharacter(characterId);
+        if (!character) return;
+        
+        const stats = character.getStats();
+        
+        // Only restore HP if character is not at full health
+        if (stats.health < stats.maxHealth) {
+          // Calculate HP to restore (5% of max HP, minimum 1)
+          const hpToRestore = Math.max(1, Math.floor(stats.maxHealth * 0.05));
+          
+          // Don't exceed max health
+          const newHealth = Math.min(stats.maxHealth, stats.health + hpToRestore);
+          
+          // Update character health using the heal method
+          const healAmount = newHealth - stats.health;
+          await characterService.heal(characterId, healAmount);
+          
+          // Show restoration message
+          setHpRestorationMessage(`+${healAmount} HP restored (${newHealth}/${stats.maxHealth})`);
+          
+          // Clear message after 3 seconds
+          setTimeout(() => {
+            setHpRestorationMessage(null);
+          }, 3000);
+          
+          // Refresh character data in the status panel
+          loadMapData();
+        }
+      } catch (error) {
+        console.error('HP restoration error:', error);
+      }
+    }, 5000);
+  }, [characterId, characterService, loadMapData]);
+  
+  // Initialize map data and HP restoration system
   useEffect(() => {
     loadMapData();
-  }, [loadMapData]);
+    
+    // Start HP restoration system
+    startHPRestorationSystem();
+    
+    // Cleanup interval on component unmount
+    return () => {
+      if (hpRestorationIntervalRef.current) {
+        clearInterval(hpRestorationIntervalRef.current);
+      }
+    };
+  }, [loadMapData, startHPRestorationSystem]);
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -437,6 +497,9 @@ const WorldMap: React.FC<WorldMapProps> = ({
           <div>
             <p className="text-slate-300">Use <span className="text-amber-400">arrow keys</span> to navigate or <span className="text-amber-400">click</span> on a tile to move.</p>
             <p className="text-slate-300">Current position: <span className="text-amber-400">({playerPosition.x}, {playerPosition.y})</span></p>
+            {hpRestorationMessage && (
+              <p className="text-green-400 mt-1 animate-pulse">{hpRestorationMessage}</p>
+            )}
           </div>
           <div>
             <button className="rpg-button text-sm" onClick={() => loadMapData()}>

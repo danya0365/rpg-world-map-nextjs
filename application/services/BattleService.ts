@@ -107,21 +107,32 @@ export class BattleService implements IBattleService {
   }
 
   async performMonsterAction(battleState: BattleState): Promise<BattleState> {
+    console.log('BattleService.performMonsterAction: Starting', battleState);
+    
     if (battleState.isOver) {
+      console.log('BattleService.performMonsterAction: Battle already over');
       return battleState;
     }
     
     const { character, monster, log } = battleState;
     const newLog = [...log];
     
+    console.log('BattleService.performMonsterAction: Getting stats');
+    
     // Monster always attacks
     const monsterStats = monster.getStats();
-    const damage = Math.max(1, monsterStats.attack - character.getStats().defense / 2);
+    const characterStats = character.getStats();
+    const damage = Math.max(1, monsterStats.attack - characterStats.defense / 2);
+    
+    console.log(`BattleService.performMonsterAction: Calculated damage: ${damage}`);
     
     character.takeDamage(damage);
     newLog.push(`${monster.getName()} attacks ${character.getName()} for ${damage} damage`);
     
+    console.log(`BattleService.performMonsterAction: Character health after damage: ${character.getStats().health}`);
+    
     if (character.isDefeated()) {
+      console.log('BattleService.performMonsterAction: Character defeated');
       newLog.push(`${character.getName()} has been defeated!`);
       return {
         ...battleState,
@@ -135,6 +146,8 @@ export class BattleService implements IBattleService {
         }
       };
     }
+    
+    console.log('BattleService.performMonsterAction: Returning new state with character turn');
     
     // Switch turn back to character
     return {

@@ -66,61 +66,150 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
   }, [battleState.isOver, battleState.result, battleState.character, damageDealt, damageTaken, turnCount, criticalHits, itemsUsed.length]);
 
   const handleAction = async (action: 'attack' | 'defend' | 'flee') => {
-    if (isProcessing || battleState.isOver) return;
+    console.log(`🎯 [BATTLE] handleAction called with action: ${action}`);
+    console.log(`🎯 [BATTLE] Current state - isProcessing: ${isProcessing}, isOver: ${battleState.isOver}`);
+    console.log(`🎯 [BATTLE] Current turn: ${battleState.turn}`);
+    
+    if (isProcessing || battleState.isOver) {
+      console.log(`🚫 [BATTLE] Action blocked - isProcessing: ${isProcessing}, isOver: ${battleState.isOver}`);
+      return;
+    }
     
     try {
+      console.log(`⚡ [BATTLE] Setting isProcessing to true`);
       setIsProcessing(true);
       setTurnCount(prev => prev + 1);
       
+      console.log(`🎮 [BATTLE] Performing character action: ${action}`);
       // Perform character action
       const updatedState = await battleService.performCharacterAction(battleState, action);
+      console.log(`✅ [BATTLE] Character action completed. New state:`, {
+        turn: updatedState.turn,
+        isOver: updatedState.isOver,
+        characterHealth: updatedState.character.getStats().health,
+        monsterHealth: updatedState.monster.getStats().health
+      });
       
       // Track damage dealt (simplified - in a real implementation, you'd get this from the battle service)
       if (action === 'attack') {
         const damageEstimate = battleState.monster.getStats().health - updatedState.monster.getStats().health;
+        console.log(`⚔️ [BATTLE] Damage dealt to monster: ${damageEstimate}`);
         setDamageDealt(prev => prev + Math.max(0, damageEstimate));
         
         // Detect critical hits (this is simplified - you'd need logic to detect crits)
         if (damageEstimate > battleState.character.getStats().attack * 1.5) {
+          console.log(`💥 [BATTLE] Critical hit detected!`);
           setCriticalHits(prev => prev + 1);
         }
       }
       
+      console.log(`🔄 [BATTLE] Updating battle state after character action`);
       setBattleState(updatedState);
       
-      // If battle is over or player fled, end battle
-      if (updatedState.isOver) {
+      // Check if character died during their action (e.g., from a trap or reflected damage)
+      if (updatedState.character.getStats().health <= 0) {
+        console.log(`💀 [BATTLE] Character died during their action`);
+        // Character died, end battle with defeat
+        const result = await battleService.endBattle({
+          ...updatedState,
+          isOver: true
+        });
+        
+        setBattleState({
+          ...updatedState,
+          isOver: true,
+          result: result || { victory: false, experienceGained: 0, itemDropped: null, monsterRecruited: null }
+        });
+        
+        console.log(`🏁 [BATTLE] Battle ended due to character death`);
         setIsProcessing(false);
         return;
       }
       
+      // If battle is over or player fled, end battle
+      if (updatedState.isOver) {
+        console.log(`🏁 [BATTLE] Battle is over, ending action handling`);
+        setIsProcessing(false);
+        return;
+      }
+      
+      console.log(`👹 [BATTLE] Starting monster turn in 1 second...`);
+      console.log(`👹 [BATTLE] Monster turn state:`, {
+        monsterName: updatedState.monster.getName(),
+        monsterHealth: updatedState.monster.getStats().health,
+        characterHealth: updatedState.character.getStats().health
+      });
+      
       // Perform monster action after a short delay
       setTimeout(async () => {
-        const previousHealth = updatedState.character.getStats().health;
-        const finalState = await battleService.performMonsterAction(updatedState);
-        
-        // Track damage taken
-        const damageTakenEstimate = previousHealth - finalState.character.getStats().health;
-        setDamageTaken(prev => prev + Math.max(0, damageTakenEstimate));
-        
-        setBattleState(finalState);
-        setIsProcessing(false);
-        
-        // If battle is over after monster's turn, prepare result but don't end battle yet
-        if (finalState.isOver && finalState.result) {
-          // We'll show confirmation dialog instead of ending immediately
-          const result = await battleService.endBattle(finalState);
-          if (result) {
-            // Update battle state with result but don't exit yet
+        console.log(`👹 [BATTLE] Monster turn timeout triggered`);
+        try {
+          console.log(`👹 [BATTLE] Starting monster attack calculation`);
+          // Monster attack implementation
+          const { character, monster, log } = updatedState;
+          const newLog = [...log];
+          
+          console.log(`👹 [BATTLE] Getting monster and character stats`);
+          // Calculate monster damage
+          const monsterStats = monster.getStats();
+          const characterStats = character.getStats();
+          console.log(`👹 [BATTLE] Monster stats:`, monsterStats);
+          console.log(`👹 [BATTLE] Character stats before attack:`, characterStats);
+          
+          const damage = Math.max(1, monsterStats.attack - characterStats.defense / 2);
+          console.log(`👹 [BATTLE] Calculated damage: ${damage} (${monsterStats.attack} - ${characterStats.defense}/2)`);
+          
+          console.log(`👹 [BATTLE] Applying damage to character`);
+          // Apply damage to character
+          character.takeDamage(damage);
+          const newCharacterHealth = character.getStats().health;
+          console.log(`👹 [BATTLE] Character health after damage: ${newCharacterHealth}`);
+          
+          newLog.push(`${monster.getName()} attacks ${character.getName()} for ${damage} damage`);
+          console.log(`👹 [BATTLE] Added attack message to log`);
+          
+          // Track damage taken
+          setDamageTaken(prev => prev + damage);
+          console.log(`👹 [BATTLE] Updated damage taken counter`);
+          
+          // Check if character died
+          if (character.getStats().health <= 0) {
+            console.log(`💀 [BATTLE] Character died from monster attack`);
             setBattleState({
-              ...finalState,
-              result
+              ...updatedState,
+              log: newLog,
+              isOver: true,
+              result: {
+                victory: false,
+                experienceGained: 0,
+                itemDropped: null,
+                monsterRecruited: null
+              }
             });
+            console.log(`🏁 [BATTLE] Battle ended - character defeated`);
+          } else {
+            console.log(`🔄 [BATTLE] Character survived, switching turn back to character`);
+            // Switch turn back to character
+            setBattleState({
+              ...updatedState,
+              log: newLog,
+              turn: 'character'
+            });
+            console.log(`✅ [BATTLE] Turn switched to character`);
           }
+          
+          console.log(`⚡ [BATTLE] Setting isProcessing to false`);
+          setIsProcessing(false);
+          console.log(`👹 [BATTLE] Monster turn completed successfully`);
+        } catch (error) {
+          console.error('❌ [BATTLE] Error during monster action:', error);
+          console.error('❌ [BATTLE] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+          setIsProcessing(false);
         }
       }, 1000);
     } catch (error) {
-      console.error('Battle error:', error);
+      console.error('❌ [BATTLE] Error in handleAction:', error);
+      console.error('❌ [BATTLE] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       setIsProcessing(false);
     }
   };
