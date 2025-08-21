@@ -33,6 +33,7 @@ const WorldMap: React.FC<WorldMapProps> = ({
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [monstersById, setMonstersById] = useState<Record<string, {name: string, type: string}>>({});
   const [hpRestorationMessage, setHpRestorationMessage] = useState<string | null>(null);
+  const [characterRefreshTrigger, setCharacterRefreshTrigger] = useState<number>(0);
   
   // Ref to store the HP restoration interval
   const hpRestorationIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -161,6 +162,9 @@ const WorldMap: React.FC<WorldMapProps> = ({
           setTimeout(() => {
             setHpRestorationMessage(null);
           }, 3000);
+          
+          // Trigger character status panel refresh
+          setCharacterRefreshTrigger(prev => prev + 1);
           
           // Refresh character data in the status panel
           loadMapData();
@@ -516,8 +520,11 @@ const WorldMap: React.FC<WorldMapProps> = ({
         
         <div className="flex flex-col gap-3">
           {/* Character Status Panel */}
-          <CharacterStatusPanel characterId={characterId} onRefresh={loadMapData} />
-          
+          <CharacterStatusPanel 
+          characterId={characterId}
+          onRefresh={() => loadMapData()}
+          refreshTrigger={characterRefreshTrigger}
+        />  
           <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-700/30 shadow-inner">
             <h3 className="text-sm font-bold text-amber-400 mb-2">Mini Map</h3>
             {renderMiniMap()}

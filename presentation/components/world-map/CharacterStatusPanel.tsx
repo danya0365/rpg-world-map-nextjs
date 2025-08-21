@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Character, Stats } from '../../../domain/entities/Character';
 import { getContainer } from '../../../infrastructure/config/DIContainer';
 import { ICharacterService } from '../../../domain/interfaces/ICharacterService';
@@ -7,11 +7,13 @@ import { IItemService } from '../../../domain/interfaces/IItemService';
 interface CharacterStatusPanelProps {
   characterId: string;
   onRefresh?: () => void;
+  refreshTrigger?: number; // Add trigger prop for external refresh
 }
 
 const CharacterStatusPanel: React.FC<CharacterStatusPanelProps> = ({ 
   characterId,
-  onRefresh 
+  onRefresh,
+  refreshTrigger 
 }) => {
   const [character, setCharacter] = useState<Character | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -19,6 +21,9 @@ const CharacterStatusPanel: React.FC<CharacterStatusPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Ref for auto-refresh interval
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const characterService = getContainer().resolve<ICharacterService>('CharacterService');
   const itemService = getContainer().resolve<IItemService>('ItemService');
@@ -60,7 +65,26 @@ const CharacterStatusPanel: React.FC<CharacterStatusPanelProps> = ({
   // Load character data when component mounts or characterId changes
   useEffect(() => {
     loadCharacterData();
+    
+    // Set up auto-refresh every 2 seconds to sync with HP restoration
+    refreshIntervalRef.current = setInterval(() => {
+      loadCharacterData();
+    }, 2000);
+    
+    // Cleanup interval on component unmount
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
   }, [loadCharacterData]);
+
+  // Refresh when external trigger changes (e.g., from HP restoration)
+  useEffect(() => {
+    if (refreshTrigger !== undefined) {
+      loadCharacterData();
+    }
+  }, [refreshTrigger, loadCharacterData]);
 
   const calculateExpProgress = () => {
     if (!stats) return 0;
