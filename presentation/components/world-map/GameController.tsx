@@ -288,9 +288,17 @@ const GameController: React.FC<GameControllerProps> = ({
       console.log('Battle lost or fled');
     }
     
-    // Return to map
+    // Return to map and completely reset battle state
     setBattleState(null);
     setGameState('map');
+    
+    // Force refresh character data to ensure proper state reset
+    const characterService = getContainer().resolve<ICharacterService>('CharacterService');
+    characterService.getCharacter(characterId!).then(() => {
+      console.log('Character data refreshed after battle');
+    }).catch(err => {
+      console.error('Failed to refresh character data:', err);
+    });
   };
   
   // Handle direct battle with enemy

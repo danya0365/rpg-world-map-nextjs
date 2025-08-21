@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import WorldMapTile, { TileType } from './WorldMapTile';
 import CharacterStatusPanel from './CharacterStatusPanel';
+import SoundSettings from './SoundSettings';
 import { getContainer } from '../../../infrastructure/config/DIContainer';
 import { IWorldMapService } from '../../../domain/interfaces/IWorldMapService';
 import { ICharacterService } from '../../../domain/interfaces/ICharacterService';
@@ -9,6 +10,7 @@ import { IEnemyService } from '../../../domain/interfaces/IEnemyService';
 import { IMonsterService } from '../../../domain/interfaces/IMonsterService';
 import { WorldMap as WorldMapEntity } from '../../../domain/entities/WorldMap';
 import { Enemy } from '../../../domain/entities/Enemy';
+import { CharacterMigration } from '../../../utils/migrations/CharacterMigration';
 
 interface WorldMapProps {
   characterId: string;
@@ -177,13 +179,22 @@ const WorldMap: React.FC<WorldMapProps> = ({
   
   // Initialize map data and HP restoration system
   useEffect(() => {
-    loadMapData();
+    const initializeGame = async () => {
+      // Run character migration for skills system
+      const migration = new CharacterMigration();
+      await migration.migrateToSkillsSystem();
+      
+      // Load map data
+      loadMapData();
+      
+      // Start HP restoration system
+      startHPRestorationSystem();
+    };
     
-    // Start HP restoration system
-    startHPRestorationSystem();
+    initializeGame();
     
-    // Cleanup interval on component unmount
     return () => {
+      // Cleanup HP restoration interval on unmount
       if (hpRestorationIntervalRef.current) {
         clearInterval(hpRestorationIntervalRef.current);
       }
@@ -494,6 +505,7 @@ const WorldMap: React.FC<WorldMapProps> = ({
 
   return (
     <div className="p-4 font-kanit">
+      <SoundSettings />
       <h2 className="text-2xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-amber-600">World Map</h2>
       
       <div className="mb-4 bg-slate-900/50 p-3 rounded-lg border border-amber-700/30 shadow-inner">

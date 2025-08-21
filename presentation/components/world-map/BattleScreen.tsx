@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { getContainer } from '../../../infrastructure/config/DIContainer';
 import { IBattleService, BattleState, BattleResult } from '../../../domain/interfaces/IBattleService';
+import { ISkillService } from '../../../domain/interfaces/ISkillService';
+import { ISoundService } from '../../../domain/interfaces/ISoundService';
+import { Skill } from '../../../domain/entities/Skill';
+import { getContainer } from '../../../infrastructure/config/DIContainer';
+import SkillsMenu from './SkillsMenu';
 
 interface BattleScreenProps {
   battleState: BattleState;
@@ -8,18 +12,10 @@ interface BattleScreenProps {
 }
 
 const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleState, onBattleEnd }) => {
-  const [battleState, setBattleState] = useState(initialBattleState);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [showSkillsMenu, setShowSkillsMenu] = useState(false);
   const [showDetailedResults, setShowDetailedResults] = useState(false);
-  const [characterStats, setCharacterStats] = useState<{
-    level: number;
-    health: number;
-    maxHealth: number;
-    attack: number;
-    defense: number;
-    experience: number;
-  } | null>(null);
   const [battleSummary, setBattleSummary] = useState<{
     damageDealt: number;
     damageTaken: number;
@@ -28,7 +24,10 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
     itemsUsed: number;
   }>({ damageDealt: 0, damageTaken: 0, turnsElapsed: 0, criticalHits: 0, itemsUsed: 0 });
   
+  // Get services from DI container
   const battleService = getContainer().resolve<IBattleService>('BattleService');
+  const skillService = getContainer().resolve<ISkillService>('SkillService');
+  const soundService = getContainer().resolve<ISoundService>('SoundService');
 
   // Track battle statistics for detailed results
   const [turnCount, setTurnCount] = useState(0);
@@ -37,21 +36,51 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
   const [criticalHits, setCriticalHits] = useState(0);
   
   // Track items used in battle
-  const [itemsUsed, setItemsUsed] = useState<{id: string, name: string}[]>([]);
+  const [itemsUsed] = useState<{id: string, name: string}[]>([]);
+  
+  // Initialize battle state with character's turn
+  const [battleState, setBattleState] = useState<BattleState>({
+    ...initialBattleState,
+    turn: 'character' // Always ensure player starts first
+  });
+
+  // Reset battle state when initialBattleState changes (new battle starts)
+  useEffect(() => {
+    // Reset battle state with character's turn when a new battle starts
+    setBattleState({
+      ...initialBattleState,
+      turn: 'character'
+    });
+    
+    // Reset battle statistics
+    setTurnCount(0);
+    setDamageDealt(0);
+    setDamageTaken(0);
+    setCriticalHits(0);
+    setShowDetailedResults(false);
+    
+  }, [initialBattleState]);
+  
+  // Initialize battle state and load available skills
+  useEffect(() => {
+    // Load available skills for the character
+    const skills = skillService.getSkillsForCharacter(battleState.character);
+    setAvailableSkills(skills);
+    
+    // Play battle music when component mounts
+    soundService.playMusic('battle-music', true, 0.4).catch(err => {
+      console.warn('Failed to play battle music:', err);
+    });
+    
+    // Stop battle music when component unmounts
+    return () => {
+      soundService.stopSound('battle-music');
+    };
+  }, [battleState, skillService, soundService]);
 
   useEffect(() => {
     if (battleState.isOver && battleState.result) {
       // When battle ends, prepare detailed statistics
-      const stats = battleState.character.getStats();
-      setCharacterStats({
-        level: stats.level,
-        health: stats.health,
-        maxHealth: stats.maxHealth,
-        attack: stats.attack,
-        defense: stats.defense,
-        experience: stats.experience,
-      });
-      
       setBattleSummary({
         damageDealt,
         damageTaken,
@@ -62,8 +91,112 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
       
       // Show detailed results when battle is over
       setShowDetailedResults(true);
+      
+      // Play victory or defeat sound
+      if (battleState.result.victory) {
+        soundService.playSound('victory', 0.7).catch(err => {
+          console.warn('Failed to play victory sound:', err);
+        });
+      } else {
+        soundService.playSound('defeat', 0.7).catch(err => {
+          console.warn('Failed to play defeat sound:', err);
+        });
+      }
+      
+      // Stop battle music
+      soundService.stopSound('battle-music');
+      
+      // NOTE: We no longer automatically call onBattleEnd here
+      // The user must click the confirmation button to end the battle
     }
-  }, [battleState.isOver, battleState.result, battleState.character, damageDealt, damageTaken, turnCount, criticalHits, itemsUsed.length]);
+  }, [battleState.isOver, battleState.result, battleState.character, damageDealt, damageTaken, turnCount, criticalHits, itemsUsed.length, soundService]);
+
+  const handleSkillAction = async (skillId: string) => {
+    console.log(`🎯 [BATTLE] handleSkillAction called with skill: ${skillId}`);
+    
+    if (isProcessing || battleState.isOver) {
+      console.log(`🚫 [BATTLE] Skill action blocked - isProcessing: ${isProcessing}, isOver: ${battleState.isOver}`);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      setShowSkillsMenu(false);
+      setTurnCount(prev => prev + 1);
+
+      console.log(`🎮 [BATTLE] Using skill: ${skillId}`);
+      
+      // Play skill sound
+      soundService.playSound('skill', 0.6).catch(err => {
+        console.warn('Failed to play skill sound:', err);
+      });
+      
+      // Use skill on the monster
+      const skillResult = skillService.useSkill(battleState.character, skillId, battleState.monster);
+      
+      if (!skillResult.success) {
+        console.log(`❌ [BATTLE] Skill use failed: ${skillResult.message}`);
+        setIsProcessing(false);
+        return;
+      }
+
+      console.log(`✅ [BATTLE] Skill used successfully: ${skillResult.message}`);
+      
+      // Update battle state after skill use
+      const updatedState = { ...battleState };
+      setBattleState(updatedState);
+
+      // Track damage if any
+      if (skillResult.damage) {
+        setDamageDealt(prev => prev + skillResult.damage!);
+      }
+
+      // Check if monster is defeated after skill
+      if (battleState.monster.isDefeated()) {
+        console.log(`🏆 [BATTLE] Monster defeated by skill!`);
+        const result = await battleService.endBattle(updatedState);
+        // Don't automatically call onBattleEnd here
+        // Update the battle state with the result instead
+        setBattleState({
+          ...updatedState,
+          isOver: true,
+          result: result
+        });
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Play monster attack sound with delay
+      setTimeout(() => {
+        soundService.playSound('monster-attack', 0.5).catch(err => {
+          console.warn('Failed to play monster attack sound:', err);
+        });
+      }, 1000);
+
+      // Monster's turn after skill
+      console.log(`👹 [BATTLE] Monster turn after skill...`);
+      setTimeout(async () => {
+        try {
+          const monsterState = await battleService.performMonsterAction(updatedState);
+          console.log(`✅ [BATTLE] Monster action completed after skill`);
+          
+          setBattleState(monsterState);
+          
+          // Don't automatically call onBattleEnd here
+          // The battle result screen will be shown and user must click Continue
+          
+          setIsProcessing(false);
+        } catch (error) {
+          console.error('❌ [BATTLE] Monster action error after skill:', error);
+          setIsProcessing(false);
+        }
+      }, 1500);
+
+    } catch (error) {
+      console.error('❌ [BATTLE] Skill action error:', error);
+      setIsProcessing(false);
+    }
+  };
 
   const handleAction = async (action: 'attack' | 'defend' | 'flee') => {
     console.log(`🎯 [BATTLE] handleAction called with action: ${action}`);
@@ -81,207 +214,186 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
       setTurnCount(prev => prev + 1);
       
       console.log(`🎮 [BATTLE] Performing character action: ${action}`);
-      // Perform character action
-      const updatedState = await battleService.performCharacterAction(battleState, action);
-      console.log(`✅ [BATTLE] Character action completed. New state:`, {
-        turn: updatedState.turn,
-        isOver: updatedState.isOver,
-        characterHealth: updatedState.character.getStats().health,
-        monsterHealth: updatedState.monster.getStats().health
-      });
       
-      // Track damage dealt (simplified - in a real implementation, you'd get this from the battle service)
-      if (action === 'attack') {
-        const damageEstimate = battleState.monster.getStats().health - updatedState.monster.getStats().health;
-        console.log(`⚔️ [BATTLE] Damage dealt to monster: ${damageEstimate}`);
-        setDamageDealt(prev => prev + Math.max(0, damageEstimate));
+      // Play appropriate sound for the action
+      switch (action) {
+        case 'attack':
+          soundService.playSound('attack', 0.6).catch(err => {
+            console.warn('Failed to play attack sound:', err);
+          });
+          break;
+        case 'defend':
+          soundService.playSound('defend', 0.6).catch(err => {
+            console.warn('Failed to play defend sound:', err);
+          });
+          break;
+        case 'flee':
+          // Handle flee separately
+          handleFlee();
+          return;
+      }
+      
+      // Perform the character action
+      const updatedState = await battleService.performCharacterAction(battleState, action);
+      
+      // Track damage dealt to monster
+      const previousMonsterHealth = battleState.monster.getStats().health;
+      const currentMonsterHealth = updatedState.monster.getStats().health;
+      const damageToMonster = previousMonsterHealth - currentMonsterHealth;
+      
+      if (damageToMonster > 0) {
+        setDamageDealt(prev => prev + damageToMonster);
+        console.log(`💥 [BATTLE] Damage dealt to monster: ${damageToMonster}`);
         
-        // Detect critical hits (this is simplified - you'd need logic to detect crits)
-        if (damageEstimate > battleState.character.getStats().attack * 1.5) {
-          console.log(`💥 [BATTLE] Critical hit detected!`);
+        // Check for critical hit (simplified logic)
+        if (damageToMonster > 15) {
           setCriticalHits(prev => prev + 1);
+          console.log(`🎯 [BATTLE] Critical hit detected!`);
+          
+          // Play critical hit sound
+          soundService.playSound('critical-hit', 0.7).catch(err => {
+            console.warn('Failed to play critical hit sound:', err);
+          });
         }
       }
       
-      console.log(`🔄 [BATTLE] Updating battle state after character action`);
+      // Update battle state with character's action result
       setBattleState(updatedState);
       
-      // Check if character died during their action (e.g., from a trap or reflected damage)
-      if (updatedState.character.getStats().health <= 0) {
-        console.log(`💀 [BATTLE] Character died during their action`);
-        // Character died, end battle with defeat
-        const result = await battleService.endBattle({
-          ...updatedState,
-          isOver: true
-        });
-        
-        setBattleState({
-          ...updatedState,
-          isOver: true,
-          result: result || { victory: false, experienceGained: 0, itemDropped: null, monsterRecruited: null }
-        });
-        
-        console.log(`🏁 [BATTLE] Battle ended due to character death`);
-        setIsProcessing(false);
-        return;
-      }
-      
-      // If battle is over or player fled, end battle
+      // If battle is over, don't proceed to monster turn
       if (updatedState.isOver) {
-        console.log(`🏁 [BATTLE] Battle is over, ending action handling`);
+        console.log(`🏁 [BATTLE] Battle is over, not proceeding to monster turn`);
+        // Don't automatically call onBattleEnd here
+        // Let the user click the confirmation button instead
         setIsProcessing(false);
         return;
       }
       
-      console.log(`👹 [BATTLE] Starting monster turn in 1 second...`);
-      console.log(`👹 [BATTLE] Monster turn state:`, {
-        monsterName: updatedState.monster.getName(),
-        monsterHealth: updatedState.monster.getStats().health,
-        characterHealth: updatedState.character.getStats().health
-      });
-      
-      // Perform monster action after a short delay
+      // Monster's turn
+      console.log(`👹 [BATTLE] Starting monster turn...`);
       setTimeout(async () => {
-        console.log(`👹 [BATTLE] Monster turn timeout triggered`);
+        // Play monster attack sound
+        soundService.playSound('monster-attack', 0.5).catch(err => {
+          console.warn('Failed to play monster attack sound:', err);
+        });
         try {
-          console.log(`👹 [BATTLE] Starting monster attack calculation`);
-          // Monster attack implementation
-          const { character, monster, log } = updatedState;
-          const newLog = [...log];
-          
-          console.log(`👹 [BATTLE] Getting monster and character stats`);
-          // Calculate monster damage
-          const monsterStats = monster.getStats();
-          const characterStats = character.getStats();
-          console.log(`👹 [BATTLE] Monster stats:`, monsterStats);
-          console.log(`👹 [BATTLE] Character stats before attack:`, characterStats);
-          
-          const damage = Math.max(1, monsterStats.attack - characterStats.defense / 2);
-          console.log(`👹 [BATTLE] Calculated damage: ${damage} (${monsterStats.attack} - ${characterStats.defense}/2)`);
-          
-          console.log(`👹 [BATTLE] Applying damage to character`);
-          // Apply damage to character
-          character.takeDamage(damage);
-          const newCharacterHealth = character.getStats().health;
-          console.log(`👹 [BATTLE] Character health after damage: ${newCharacterHealth}`);
-          
-          newLog.push(`${monster.getName()} attacks ${character.getName()} for ${damage} damage`);
-          console.log(`👹 [BATTLE] Added attack message to log`);
+          console.log(`👹 [BATTLE] Executing monster action`);
+          const monsterState = await battleService.performMonsterAction(updatedState);
+          console.log(`✅ [BATTLE] Monster action completed. Final state:`, {
+            turn: monsterState.turn,
+            isOver: monsterState.isOver,
+            characterHealth: monsterState.character.getStats().health,
+            monsterHealth: monsterState.monster.getStats().health
+          });
           
           // Track damage taken
-          setDamageTaken(prev => prev + damage);
-          console.log(`👹 [BATTLE] Updated damage taken counter`);
+          const previousCharacterHealth = updatedState.character.getStats().health;
+          const currentCharacterHealth = monsterState.character.getStats().health;
+          const damageToCharacter = previousCharacterHealth - currentCharacterHealth;
           
-          // Check if character died
-          if (character.getStats().health <= 0) {
-            console.log(`💀 [BATTLE] Character died from monster attack`);
-            setBattleState({
-              ...updatedState,
-              log: newLog,
-              isOver: true,
-              result: {
-                victory: false,
-                experienceGained: 0,
-                itemDropped: null,
-                monsterRecruited: null
-              }
-            });
-            console.log(`🏁 [BATTLE] Battle ended - character defeated`);
-          } else {
-            console.log(`🔄 [BATTLE] Character survived, switching turn back to character`);
-            // Switch turn back to character
-            setBattleState({
-              ...updatedState,
-              log: newLog,
-              turn: 'character'
-            });
-            console.log(`✅ [BATTLE] Turn switched to character`);
+          if (damageToCharacter > 0) {
+            setDamageTaken(prev => prev + damageToCharacter);
+            console.log(`💔 [BATTLE] Damage taken by character: ${damageToCharacter}`);
+          }
+          
+          setBattleState(monsterState);
+          
+          if (monsterState.isOver && monsterState.result) {
+            console.log(`🏁 [BATTLE] Battle ended with result:`, monsterState.result);
+            // Don't automatically call onBattleEnd here
+            // The battle result screen will be shown and user must click Continue
           }
           
           console.log(`⚡ [BATTLE] Setting isProcessing to false`);
           setIsProcessing(false);
-          console.log(`👹 [BATTLE] Monster turn completed successfully`);
         } catch (error) {
-          console.error('❌ [BATTLE] Error during monster action:', error);
-          console.error('❌ [BATTLE] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+          console.error('❌ [BATTLE] Monster action error:', error);
+          if (error instanceof Error) {
+            console.error('❌ [BATTLE] Error stack:', error.stack);
+          }
           setIsProcessing(false);
         }
-      }, 1000);
+      }, 1500);
+      
     } catch (error) {
-      console.error('❌ [BATTLE] Error in handleAction:', error);
-      console.error('❌ [BATTLE] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      console.error('❌ [BATTLE] Character action error:', error);
+      if (error instanceof Error) {
+        console.error('❌ [BATTLE] Error stack:', error.stack);
+      }
       setIsProcessing(false);
     }
   };
-  
-  // Handle confirmation to exit battle
-  const handleConfirmExit = () => {
-    if (battleState.result) {
-      onBattleEnd(battleState.result);
-    }
-  };
 
-  // Auto-scroll battle log to bottom when new entries are added
-  const logRef = React.useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [battleState.log]);
-
-  const renderBattleLog = () => {
-    return (
-      <div 
-        ref={logRef}
-        className="h-40 overflow-y-auto border-2 border-amber-500 p-3 mb-6 bg-slate-900/40 rounded-lg shadow-inner"
-      >
-        {battleState.log.map((entry: string, index: number) => (
-          <p 
-            key={index} 
-            className={`mb-2 font-kanit ${index === battleState.log.length - 1 ? 'text-amber-400 font-medium animate-pulse' : 'text-amber-200'}`}
-          >
-            {entry}
-          </p>
-        ))}
-      </div>
-    );
+  const handleFlee = () => {
+    // Set processing to prevent further actions
+    setIsProcessing(true);
+    // Directly handle flee without going through monster turn
+    battleService.performCharacterAction(battleState, 'flee')
+      .then(updatedState => {
+        // Mark battle as over immediately and ensure turn is set to character
+        const fleeState: BattleState = {
+          ...updatedState,
+          isOver: true,
+          turn: 'character' // Reset turn to character for next battle
+        };
+        setBattleState(fleeState);
+        setIsProcessing(false);
+        // Small delay before ending battle
+        setTimeout(() => {
+          onBattleEnd({
+            victory: false,
+            experienceGained: 0,
+            itemDropped: null,
+            monsterRecruited: null
+          });
+        }, 500);
+      });
   };
 
   const renderCharacterStats = () => {
     const stats = battleState.character.getStats();
     const healthPercentage = (stats.health / stats.maxHealth) * 100;
+    const manaPercentage = (stats.mana / stats.maxMana) * 100;
     
     return (
-      <div className="mb-4 p-4 border-2 border-blue-400 bg-blue-900/50 rounded-lg shadow-md">
-        <h3 className="font-kanit font-bold text-lg mb-2 text-blue-200">{battleState.character.getName()}</h3>
-        
-        {/* Health Bar */}
-        <div className="mb-3">
-          <div className="flex justify-between text-sm mb-1">
-            <span className="font-medium text-blue-200">HP</span>
-            <span className="text-blue-200">{stats.health}/{stats.maxHealth}</span>
+      <div className="bg-slate-900/80 p-4 rounded-lg border border-amber-500/50 shadow-lg">
+        <h3 className="text-lg font-kanit font-bold text-amber-400 mb-3 text-center">
+          🛡️ {battleState.character.getName()}
+        </h3>
+        <div className="space-y-3">
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-slate-300">Health</span>
+              <span className="text-red-400">{stats.health}/{stats.maxHealth}</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                className="bg-red-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${healthPercentage}%` }}
+              ></div>
+            </div>
           </div>
-          <div className="w-full h-3 bg-slate-700 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${healthPercentage > 50 ? 'bg-green-500' : healthPercentage > 20 ? 'bg-yellow-500' : 'bg-red-500'}`}
-              style={{ width: `${healthPercentage}%` }}
-            ></div>
+          
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-slate-300">Mana</span>
+              <span className="text-blue-400">{stats.mana}/{stats.maxMana}</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${manaPercentage}%` }}
+              ></div>
+            </div>
           </div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-3 text-sm text-blue-100">
-          <div className="flex items-center">
-            <span className="w-6 h-6 mr-2 flex items-center justify-center rounded-full bg-blue-700 text-blue-200">⚔️</span>
-            <span>Attack: {stats.attack}</span>
-          </div>
-          <div className="flex items-center">
-            <span className="w-6 h-6 mr-2 flex items-center justify-center rounded-full bg-blue-700 text-blue-200">🛡️</span>
-            <span>Defense: {stats.defense}</span>
-          </div>
-          <div className="flex items-center">
-            <span className="w-6 h-6 mr-2 flex items-center justify-center rounded-full bg-blue-700 text-blue-200">✨</span>
-            <span>Level: {stats.level}</span>
+          
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="text-slate-300">
+              <span className="text-orange-400">⚔️</span> Attack: {stats.attack}
+            </div>
+            <div className="text-slate-300">
+              <span className="text-blue-400">🛡️</span> Defense: {stats.defense}
+            </div>
           </div>
         </div>
       </div>
@@ -293,239 +405,126 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
     const healthPercentage = (stats.health / stats.maxHealth) * 100;
     
     return (
-      <div className="mb-4 p-4 border-2 border-red-400 bg-red-900/50 rounded-lg shadow-md">
-        <h3 className="font-kanit font-bold text-lg mb-2 text-red-200">{battleState.monster.getName()}</h3>
-        
-        {/* Health Bar */}
-        <div className="mb-3">
-          <div className="flex justify-between text-sm mb-1">
-            <span className="font-medium text-red-200">HP</span>
-            <span className="text-red-200">{stats.health}/{stats.maxHealth}</span>
+      <div className="bg-slate-900/80 p-4 rounded-lg border border-red-500/50 shadow-lg">
+        <h3 className="text-lg font-kanit font-bold text-red-400 mb-3 text-center">
+          👹 {battleState.monster.getName()}
+        </h3>
+        <div className="space-y-3">
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-slate-300">Health</span>
+              <span className="text-red-400">{stats.health}/{stats.maxHealth}</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                className="bg-red-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${healthPercentage}%` }}
+              ></div>
+            </div>
           </div>
-          <div className="w-full h-3 bg-slate-700 rounded-full overflow-hidden">
-            <div 
-              className={`h-full ${healthPercentage > 50 ? 'bg-green-500' : healthPercentage > 20 ? 'bg-yellow-500' : 'bg-red-500'}`}
-              style={{ width: `${healthPercentage}%` }}
-            ></div>
+          
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="text-slate-300">
+              <span className="text-orange-400">⚔️</span> Attack: {stats.attack}
+            </div>
+            <div className="text-slate-300">
+              <span className="text-blue-400">🛡️</span> Defense: {stats.defense}
+            </div>
           </div>
         </div>
-        
-        <div className="grid grid-cols-2 gap-3 text-sm text-red-100">
-          <div className="flex items-center">
-            <span className="w-6 h-6 mr-2 flex items-center justify-center rounded-full bg-red-700 text-red-200">🔥</span>
-            <span>Type: {battleState.monster.getType()}</span>
-          </div>
-          <div className="flex items-center">
-            <span className="w-6 h-6 mr-2 flex items-center justify-center rounded-full bg-red-700 text-red-200">⚔️</span>
-            <span>Attack: {stats.attack}</span>
-          </div>
-          <div className="flex items-center">
-            <span className="w-6 h-6 mr-2 flex items-center justify-center rounded-full bg-red-700 text-red-200">🛡️</span>
-            <span>Defense: {stats.defense}</span>
-          </div>
+      </div>
+    );
+  };
+
+  const renderBattleLog = () => {
+    return (
+      <div className="bg-slate-900/50 p-4 rounded-lg border border-amber-700/30 mb-6 max-h-32 overflow-y-auto">
+        <h4 className="text-amber-400 font-kanit font-medium mb-2">Battle Log</h4>
+        <div className="space-y-1 text-sm">
+          {battleState.log.slice(-5).map((entry, index) => (
+            <div key={index} className="text-slate-300">
+              {entry}
+            </div>
+          ))}
+          {isProcessing && (
+            <div className="text-yellow-400 animate-pulse">
+              Processing action...
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
   const renderBattleResult = () => {
-    if (!battleState.isOver || !battleState.result) return null;
+    if (!battleState.result) return null;
     
     const { victory, experienceGained, itemDropped, monsterRecruited } = battleState.result;
     
     return (
-      <div className={`p-6 border-2 rounded-lg mb-4 shadow-lg ${victory ? 'border-amber-500 bg-amber-900/50' : 'border-slate-500 bg-slate-900/50'} animate-fadeIn`}>
-        <h3 className={`font-kanit font-bold text-2xl mb-4 text-center ${victory ? 'text-amber-300' : 'text-slate-300'}`}>
-          {victory ? '⭐ Victory! ⭐' : '☠️ Defeat! ☠️'}
+      <div className="bg-slate-900/90 p-6 rounded-lg border-2 border-amber-500/50 mb-6">
+        <h3 className="text-2xl font-kanit font-bold text-center mb-4">
+          {victory ? (
+            <span className="text-green-400">🎉 Victory! 🎉</span>
+          ) : (
+            <span className="text-red-400">💀 Defeat 💀</span>
+          )}
         </h3>
         
-        {/* Basic Results */}
-        {!showDetailedResults && victory && (
-          <div className="space-y-3 mb-4">
-            <div className="flex items-center bg-amber-900/60 p-3 rounded-lg border border-amber-500">
-              <span className="text-xl mr-3">✨</span>
-              <p className="font-medium text-amber-200">Experience gained: <span className="text-amber-300 font-bold">{experienceGained}</span></p>
-            </div>
-            
-            {itemDropped && (
-              <div className="flex items-center bg-blue-900/60 p-3 rounded-lg border border-blue-500">
-                <span className="text-xl mr-3">🎁</span>
-                <p className="font-medium text-blue-200">Item acquired: <span className="text-blue-300 font-bold">{itemDropped.getName()}</span></p>
+        <div className="space-y-3 text-center">
+          {victory && (
+            <>
+              <div className="text-blue-400">
+                <span className="text-yellow-400">⭐</span> Experience Gained: {experienceGained}
               </div>
-            )}
-            
-            {monsterRecruited && (
-              <div className="flex items-center bg-green-900/60 p-3 rounded-lg border border-green-500">
-                <span className="text-xl mr-3">🤝</span>
-                <p className="font-medium text-green-200">Monster recruited: <span className="text-green-300 font-bold">{monsterRecruited.getName()}</span></p>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Detailed Battle Statistics */}
-        {showDetailedResults && (
-          <div className="space-y-4 mb-6">
-            {/* Battle Summary Section */}
-            <div className="bg-slate-800/70 p-4 rounded-lg border border-amber-500/50">
-              <h4 className="font-kanit font-bold text-lg mb-3 text-amber-300 border-b border-amber-500/30 pb-2">Battle Summary</h4>
               
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center">
-                  <span className="w-8 h-8 mr-2 flex items-center justify-center rounded-full bg-red-800/70 text-red-200">⚔️</span>
-                  <div>
-                    <p className="text-sm text-slate-400">Damage Dealt</p>
-                    <p className="font-medium text-red-300">{battleSummary.damageDealt}</p>
-                  </div>
+              {itemDropped && (
+                <div className="text-green-400">
+                  <span className="text-yellow-400">💎</span> Item Found: {itemDropped.getName()}
                 </div>
-                
-                <div className="flex items-center">
-                  <span className="w-8 h-8 mr-2 flex items-center justify-center rounded-full bg-blue-800/70 text-blue-200">🛡️</span>
-                  <div>
-                    <p className="text-sm text-slate-400">Damage Taken</p>
-                    <p className="font-medium text-blue-300">{battleSummary.damageTaken}</p>
-                  </div>
+              )}
+              
+              {monsterRecruited && (
+                <div className="text-purple-400">
+                  <span className="text-yellow-400">🤝</span> {monsterRecruited.getName()} joined your party!
                 </div>
-                
-                <div className="flex items-center">
-                  <span className="w-8 h-8 mr-2 flex items-center justify-center rounded-full bg-amber-800/70 text-amber-200">⏱️</span>
-                  <div>
-                    <p className="text-sm text-slate-400">Turns</p>
-                    <p className="font-medium text-amber-300">{battleSummary.turnsElapsed}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center">
-                  <span className="w-8 h-8 mr-2 flex items-center justify-center rounded-full bg-purple-800/70 text-purple-200">⚡</span>
-                  <div>
-                    <p className="text-sm text-slate-400">Critical Hits</p>
-                    <p className="font-medium text-purple-300">{battleSummary.criticalHits}</p>
-                  </div>
-                </div>
-              </div>
+              )}
+            </>
+          )}
+        </div>
+        
+        {showDetailedResults && (
+          <div className="mt-4 pt-4 border-t border-amber-500/30">
+            <h4 className="text-amber-400 font-medium mb-2">Battle Statistics</h4>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="text-slate-300">Damage Dealt: <span className="text-red-400">{battleSummary.damageDealt}</span></div>
+              <div className="text-slate-300">Damage Taken: <span className="text-red-400">{battleSummary.damageTaken}</span></div>
+              <div className="text-slate-300">Turns: <span className="text-blue-400">{battleSummary.turnsElapsed}</span></div>
+              <div className="text-slate-300">Critical Hits: <span className="text-yellow-400">{battleSummary.criticalHits}</span></div>
             </div>
-            
-            {/* Rewards Section */}
-            {victory && (
-              <div className="bg-amber-900/40 p-4 rounded-lg border border-amber-500">
-                <h4 className="font-kanit font-bold text-lg mb-3 text-amber-300 border-b border-amber-500/30 pb-2">Rewards</h4>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center bg-amber-900/60 p-3 rounded-lg">
-                    <span className="text-xl mr-3">✨</span>
-                    <div>
-                      <p className="text-sm text-amber-200/70">Experience</p>
-                      <p className="font-medium text-amber-300">{experienceGained} XP</p>
-                    </div>
-                  </div>
-                  
-                  {itemDropped && (
-                    <div className="flex items-center bg-blue-900/60 p-3 rounded-lg">
-                      <span className="text-xl mr-3">🎁</span>
-                      <div>
-                        <p className="text-sm text-blue-200/70">Item</p>
-                        <p className="font-medium text-blue-300">{itemDropped.getName()}</p>
-                        <p className="text-xs text-blue-200/50 mt-1">{itemDropped.getDescription ? itemDropped.getDescription() : 'A useful item'}</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {monsterRecruited && (
-                    <div className="flex items-center bg-green-900/60 p-3 rounded-lg">
-                      <span className="text-xl mr-3">🤝</span>
-                      <div>
-                        <p className="text-sm text-green-200/70">Ally</p>
-                        <p className="font-medium text-green-300">{monsterRecruited.getName()}</p>
-                        <p className="text-xs text-green-200/50 mt-1">Type: {monsterRecruited.getType()}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {/* Character Progress */}
-            {victory && characterStats && (
-              <div className="bg-blue-900/40 p-4 rounded-lg border border-blue-500">
-                <h4 className="font-kanit font-bold text-lg mb-3 text-blue-300 border-b border-blue-500/30 pb-2">Character Progress</h4>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center">
-                    <span className="w-8 h-8 mr-2 flex items-center justify-center rounded-full bg-blue-800/70 text-blue-200">✨</span>
-                    <div>
-                      <p className="text-sm text-slate-400">Level</p>
-                      <p className="font-medium text-blue-300">{characterStats.level}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <span className="w-8 h-8 mr-2 flex items-center justify-center rounded-full bg-blue-800/70 text-blue-200">📊</span>
-                    <div>
-                      <p className="text-sm text-slate-400">Experience</p>
-                      <p className="font-medium text-blue-300">{characterStats.experience} XP</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
         
-        {/* Toggle between basic and detailed results */}
-        <button 
-          className="w-full mb-4 px-4 py-2 bg-slate-700 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors duration-200 font-kanit text-sm shadow-md flex items-center justify-center"
-          onClick={() => setShowDetailedResults(!showDetailedResults)}
-        >
-          <span className="mr-2">{showDetailedResults ? '📊' : '📋'}</span>
-          {showDetailedResults ? 'Show Basic Results' : 'Show Detailed Statistics'}
-        </button>
-        
-        {/* Continue button that shows confirmation dialog */}
-        <button 
-          className="w-full px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-500 transition-colors duration-200 font-kanit font-medium text-lg shadow-md"
-          onClick={() => setShowConfirmation(true)}
-        >
-          Continue Adventure
-        </button>
-      </div>
-    );
-  };
-  
-  // Confirmation dialog before exiting battle
-  const renderConfirmationDialog = () => {
-    if (!showConfirmation) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 animate-fadeIn">
-        <div className="bg-slate-800 border-2 border-amber-500 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
-          <h3 className="text-2xl font-kanit font-bold mb-4 text-amber-400 text-center">Leave Battle?</h3>
-          
-          <p className="text-slate-300 mb-6 text-center">
-            Are you sure you want to leave the battle and return to the world map?
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button 
-              className="flex-1 px-6 py-3 bg-slate-700 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors duration-200 font-kanit"
-              onClick={() => setShowConfirmation(false)}
-            >
-              Stay in Battle
-            </button>
-            
-            <button 
-              className="flex-1 px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-500 transition-colors duration-200 font-kanit font-medium"
-              onClick={handleConfirmExit}
-            >
-              Return to Map
-            </button>
-          </div>
+        {/* Add confirmation button to return to map */}
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              soundService.playSound('menu-close', 0.5).catch(err => {
+                console.warn('Failed to play menu close sound:', err);
+              });
+              onBattleEnd(battleState.result!);
+            }}
+            className="px-8 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
+          >
+            Continue
+          </button>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto bg-slate-900/80 border-2 border-amber-500 rounded-xl shadow-lg">
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 p-6 font-kanit">
       <h2 className="text-3xl font-kanit font-bold mb-6 text-center text-amber-400 border-b-2 border-amber-500/50 pb-3">⚔️ Battle ⚔️</h2>
       
       {renderBattleLog()}
@@ -538,71 +537,71 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
       {battleState.isOver ? (
         renderBattleResult()
       ) : (
-        <div className="flex flex-col gap-4 mb-4">
-          {/* Main battle actions */}
-          <div className="flex flex-wrap justify-center gap-4">
-            <button 
-              className={`px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-500 hover:to-red-600 shadow-md transition-all duration-200 font-kanit font-medium ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
-              onClick={() => handleAction('attack')}
-              disabled={isProcessing || battleState.turn !== 'character'}
-            >
-              <span className="flex items-center"><span className="mr-2">⚔️</span> Attack</span>
-            </button>
-            <button 
-              className={`px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-500 hover:to-blue-600 shadow-md transition-all duration-200 font-kanit font-medium ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
-              onClick={() => handleAction('defend')}
-              disabled={isProcessing || battleState.turn !== 'character'}
-            >
-              <span className="flex items-center"><span className="mr-2">🛡️</span> Defend</span>
-            </button>
-            <button 
-              className={`px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg hover:from-gray-500 hover:to-gray-600 shadow-md transition-all duration-200 font-kanit font-medium ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
-              onClick={() => handleAction('flee')}
-              disabled={isProcessing || battleState.turn !== 'character'}
-            >
-              <span className="flex items-center"><span className="mr-2">🏃</span> Flee</span>
-            </button>
-          </div>
+        <div className="bg-slate-900/50 p-6 rounded-lg border border-amber-700/30">
+          <h3 className="text-xl font-kanit font-bold text-amber-400 mb-4 text-center">
+            {battleState.turn === 'character' ? "Your Turn" : "Monster's Turn"}
+          </h3>
           
-          {/* Items section (placeholder for future implementation) */}
-          <div className="mt-2 border border-amber-500/30 rounded-lg p-3 bg-slate-800/50">
-            <h4 className="text-amber-400 font-kanit font-medium text-center mb-2 text-sm">Items</h4>
-            <div className="flex justify-center gap-2">
-              <button 
-                className="px-3 py-2 bg-green-700/70 text-white rounded hover:bg-green-600/70 transition-colors duration-200 font-kanit text-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => {
-                  // This will be implemented with the item system
-                  // For now, just track that an item was used
-                  setItemsUsed(prev => [...prev, {id: 'potion-1', name: 'Health Potion'}]);
-                }}
-                disabled={isProcessing || battleState.turn !== 'character'}
+          {battleState.turn === 'character' && !isProcessing && (
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => handleAction('attack')}
+                disabled={isProcessing}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="mr-1">🧉</span> Health Potion
+                ⚔️ Attack
               </button>
-              <button 
-                className="px-3 py-2 bg-purple-700/70 text-white rounded hover:bg-purple-600/70 transition-colors duration-200 font-kanit text-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => {
-                  setItemsUsed(prev => [...prev, {id: 'bomb-1', name: 'Bomb'}]);
-                }}
-                disabled={isProcessing || battleState.turn !== 'character'}
+              <button
+                onClick={() => handleAction('defend')}
+                disabled={isProcessing}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="mr-1">💣</span> Bomb
+                🛡️ Defend
+              </button>
+              <button
+                onClick={() => {
+                  setShowSkillsMenu(true);
+                  soundService.playSound('menu-open', 0.4).catch(err => {
+                    console.warn('Failed to play menu open sound:', err);
+                  });
+                }}
+                disabled={isProcessing || availableSkills.length === 0}
+                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ✨ Skills ({availableSkills.length})
+              </button>
+              <button
+                onClick={() => handleFlee()}
+                disabled={isProcessing}
+                className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                🏃 Flee
               </button>
             </div>
-          </div>
+          )}
+          
+          {isProcessing && (
+            <div className="text-center text-yellow-400 animate-pulse">
+              <div className="text-lg">⚡ Processing...</div>
+            </div>
+          )}
         </div>
       )}
-      
-      {battleState.turn !== 'character' && !battleState.isOver && (
-        <div className="text-center mt-6 p-3 bg-red-900/40 border border-red-500 rounded-lg">
-          <p className="text-red-300 font-kanit font-medium animate-pulse flex items-center justify-center">
-            <span className="mr-2">⚠️</span> Monster&apos;s turn...
-          </p>
-        </div>
+
+      {showSkillsMenu && (
+        <SkillsMenu
+          skills={availableSkills}
+          character={battleState.character}
+          onSkillSelect={handleSkillAction}
+          onClose={() => {
+            setShowSkillsMenu(false);
+            soundService.playSound('menu-close', 0.4).catch(err => {
+              console.warn('Failed to play menu close sound:', err);
+            });
+          }}
+          isProcessing={isProcessing}
+        />
       )}
-      
-      {/* Render confirmation dialog */}
-      {renderConfirmationDialog()}
     </div>
   );
 };

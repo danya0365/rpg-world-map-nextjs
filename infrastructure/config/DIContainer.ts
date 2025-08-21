@@ -3,12 +3,16 @@ import { ItemService } from '../../application/services/ItemService';
 import { MonsterService } from '../../application/services/MonsterService';
 import { WorldMapService } from '../../application/services/WorldMapService';
 import { BattleService } from '../../application/services/BattleService';
-import { EnemyService } from '../../application/services/EnemyService';
+import { SkillService } from '../../application/services/SkillService';
 import { ICharacterService } from '../../domain/interfaces/ICharacterService';
 import { IItemService } from '../../domain/interfaces/IItemService';
 import { IMonsterService } from '../../domain/interfaces/IMonsterService';
 import { IWorldMapService } from '../../domain/interfaces/IWorldMapService';
 import { IBattleService } from '../../domain/interfaces/IBattleService';
+import { ISkillService } from '../../domain/interfaces/ISkillService';
+import { ISoundService } from '../../domain/interfaces/ISoundService';
+import { BrowserSoundService } from '../services/BrowserSoundService';
+import { EnemyService } from '../../application/services/EnemyService';
 import { IEnemyService } from '../../domain/interfaces/IEnemyService';
 import { CharacterRepository } from '../../domain/repositories/CharacterRepository';
 import { ItemRepository } from '../../domain/repositories/ItemRepository';
@@ -61,8 +65,7 @@ export const setupDependencies = (): void => {
     'BattleService',
     BattleService,
     container.resolve<ICharacterService>('CharacterService'),
-    container.resolve<IMonsterService>('MonsterService'),
-    container.resolve<IItemService>('ItemService')
+    container.resolve<IMonsterService>('MonsterService')
   );
   
   container.registerSingleton<IEnemyService>(
@@ -71,6 +74,17 @@ export const setupDependencies = (): void => {
     container.resolve<EnemyRepository>('EnemyRepository'),
     container.resolve<MonsterRepository>('MonsterRepository'),
     container.resolve<IWorldMapService>('WorldMapService')
+  );
+  
+  container.registerSingleton<ISkillService>(
+    'SkillService',
+    SkillService
+  );
+
+  // Register sound service
+  container.registerSingleton<ISoundService>(
+    'SoundService',
+    BrowserSoundService
   );
 };
 
