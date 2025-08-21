@@ -1,3 +1,7 @@
+# RPG World Map Game
+
+An interactive RPG game built with Next.js, TypeScript, and Clean Architecture principles. This game features a world map with explorable locations, turn-based battles, monster recruitment, and item collection.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -19,6 +23,35 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Game Architecture
+
+This project follows Clean Architecture principles with a clear separation of concerns:
+
+### Domain Layer
+- **Entities**: Character, Monster, Item, WorldMap, Location
+- **Interfaces**: Service and repository interfaces defining the contracts
+
+### Application Layer
+- **Services**: Implementation of domain interfaces
+- **DTOs**: Data transfer objects for communication between layers
+
+### Infrastructure Layer
+- **Repositories**: LocalStorage implementations for data persistence
+- **DI Container**: Simple dependency injection container
+
+### Presentation Layer
+- **Components**: React components for UI rendering
+- **Hooks**: Custom React hooks for state management
+
+## Game Features
+
+- **World Map Navigation**: Keyboard and click-based movement
+- **Location Exploration**: Discover and interact with locations
+- **Turn-based Battle System**: Fight monsters with strategic actions
+- **Monster Recruitment**: Recruit defeated monsters to join your party
+- **Item Collection**: Collect items dropped by defeated monsters
+- **Experience System**: Gain XP and level up your character
 
 ## Learn More
 
