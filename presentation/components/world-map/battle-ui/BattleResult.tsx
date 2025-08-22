@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BattleResult } from '../../../../domain/interfaces/IBattleService';
 import { ISoundService } from '../../../../domain/interfaces/ISoundService';
 
@@ -16,6 +16,10 @@ interface BattleResultProps {
   soundService: ISoundService;
   // Add battle log to detect flee
   battleLog?: string[];
+  // Add level up information
+  leveledUp?: boolean;
+  previousLevel?: number;
+  currentLevel?: number;
 }
 
 const BattleResultComponent: React.FC<BattleResultProps> = ({ 
@@ -24,8 +28,31 @@ const BattleResultComponent: React.FC<BattleResultProps> = ({
   showDetailedResults,
   onBattleEnd,
   soundService,
-  battleLog = []
+  battleLog = [],
+  leveledUp = false,
+  previousLevel = 1,
+  currentLevel = 1
 }) => {
+  const [showLevelUpAnimation, setShowLevelUpAnimation] = useState(false);
+  
+  useEffect(() => {
+    if (leveledUp) {
+      // Play level up sound
+      soundService.playSound('level-up', 0.7).catch(err => {
+        console.warn('Failed to play level up sound:', err);
+      });
+      
+      // Show level up animation
+      setShowLevelUpAnimation(true);
+      
+      // Hide animation after 3 seconds
+      const timer = setTimeout(() => {
+        setShowLevelUpAnimation(false);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [leveledUp, soundService]);
   // Add null check to prevent destructuring errors
   if (!result) {
     console.error('Battle result is null or undefined');
@@ -77,6 +104,18 @@ const BattleResultComponent: React.FC<BattleResultProps> = ({
             <div className="text-blue-400">
               <span className="text-yellow-400">⭐</span> Experience Gained: {experienceGained}
             </div>
+            
+            {leveledUp && (
+              <div className={`text-yellow-400 font-bold ${showLevelUpAnimation ? 'animate-pulse text-2xl' : ''} transition-all duration-500 my-2`}>
+                <span className="text-yellow-400">🌟</span> LEVEL UP! <span className="text-yellow-400">🌟</span>
+                <div className="text-green-400 text-lg">
+                  Level {previousLevel} → Level {currentLevel}
+                </div>
+                <div className="text-sm text-slate-300 mt-1">
+                  Your stats have increased!
+                </div>
+              </div>
+            )}
             
             {itemDropped && (
               <div className="text-green-400">

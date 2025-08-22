@@ -125,6 +125,9 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
           onBattleEnd={handleBattleEnd}
           soundService={soundService}
           battleLog={battleState.log}
+          leveledUp={battleState.leveledUp}
+          previousLevel={battleState.previousLevel}
+          currentLevel={battleState.currentLevel}
         />
       ) : (
         <BattleActions 

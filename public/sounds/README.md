@@ -16,6 +16,7 @@ The following sound files need to be added to this directory:
 - `defeat.mp3` - Battle defeat sound
 - `flee.mp3` - Flee from battle sound
 - `item-use.mp3` - Item use sound
+- `level-up.mp3` - Level up sound
 
 ### UI Sounds
 - `click.mp3` - Button click sound

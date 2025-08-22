@@ -16,6 +16,10 @@ export interface BattleState {
   log: string[];
   isOver: boolean;
   result: BattleResult | null;
+  // Level up information
+  leveledUp?: boolean;
+  previousLevel?: number;
+  currentLevel?: number;
 }
 
 export interface IBattleService {

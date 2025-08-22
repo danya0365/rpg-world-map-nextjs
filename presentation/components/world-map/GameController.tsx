@@ -6,6 +6,7 @@ import { ICharacterService } from '../../../domain/interfaces/ICharacterService'
 import { IEnemyService } from '../../../domain/interfaces/IEnemyService';
 import { IMonsterService } from '../../../domain/interfaces/IMonsterService';
 import { IWorldMapService } from '../../../domain/interfaces/IWorldMapService';
+import { ISoundService } from '../../../domain/interfaces/ISoundService';
 import { getContainer, setupDependencies } from '../../../infrastructure/config/DIContainer';
 import { Monster, MonsterData } from '../../../domain/entities/Monster';
 import { MonsterRepository } from '../../../domain/repositories/MonsterRepository';
@@ -271,34 +272,81 @@ const GameController: React.FC<GameControllerProps> = ({
   };
 
   // Handle battle end
-  const handleBattleEnd = (result: BattleResult) => {
-    // Process battle results
-    if (result.victory) {
-      // Could show a victory message or update UI with rewards
-      console.log(`Victory! XP gained: ${result.experienceGained}`);
-      
-      if (result.itemDropped) {
-        console.log(`Item dropped: ${result.itemDropped.getName()}`);
+  const handleBattleEnd = async (result: BattleResult) => {
+    try {
+      // Process battle results
+      if (result.victory) {
+        // Get character service to update experience
+        const characterService = getContainer().resolve<ICharacterService>('CharacterService');
+        
+        // Get character before adding experience to check for level up
+        const characterBefore = await characterService.getCharacter(characterId!);
+        const previousLevel = characterBefore?.getStats().level || 1;
+        
+        // Add experience to character and save it
+        console.log(`Victory! XP gained: ${result.experienceGained}`);
+        await characterService.addExperience(characterId!, result.experienceGained);
+        
+        // Get updated character to check if level up occurred
+        const updatedCharacter = await characterService.getCharacter(characterId!);
+        const currentLevel = updatedCharacter?.getStats().level || 1;
+        
+        // Check if level up occurred
+        const leveledUp = currentLevel > previousLevel;
+        if (leveledUp) {
+          console.log(`Level up! ${previousLevel} -> ${currentLevel}`);
+          // Update battle state with level up information
+          if (battleState) {
+            setBattleState({
+              ...battleState,
+              leveledUp: true,
+              previousLevel,
+              currentLevel
+            });
+          }
+          
+          // Play level up sound
+          const soundService = getContainer().resolve<ISoundService>('SoundService');
+          soundService.playSound('level-up', 0.7).catch((err: Error) => {
+            console.warn('Failed to play level up sound:', err);
+          });
+        }
+        
+        if (result.itemDropped) {
+          console.log(`Item dropped: ${result.itemDropped.getName()}`);
+          await characterService.addItem(characterId!, result.itemDropped.getId());
+        }
+        
+        if (result.monsterRecruited) {
+          console.log(`Monster recruited: ${result.monsterRecruited.getName()}`);
+          await characterService.addAlly(characterId!, result.monsterRecruited.getId());
+        }
+        
+        // Return to map after a short delay to allow animations to complete
+        setTimeout(() => {
+          setBattleState(null);
+          setGameState('map');
+        }, leveledUp ? 3000 : 1000);
+      } else {
+        console.log('Battle lost or fled');
+        
+        // Return to map immediately for non-victory
+        setBattleState(null);
+        setGameState('map');
       }
       
-      if (result.monsterRecruited) {
-        console.log(`Monster recruited: ${result.monsterRecruited.getName()}`);
-      }
-    } else {
-      console.log('Battle lost or fled');
+      // Force refresh character data to ensure proper state reset
+      const characterService = getContainer().resolve<ICharacterService>('CharacterService');
+      const updatedCharacter = await characterService.getCharacter(characterId!);
+      console.log('Character data refreshed after battle:', updatedCharacter?.getStats());
+    } catch (err) {
+      console.error('Error processing battle end:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      
+      // Return to map in case of error
+      setBattleState(null);
+      setGameState('map');
     }
-    
-    // Return to map and completely reset battle state
-    setBattleState(null);
-    setGameState('map');
-    
-    // Force refresh character data to ensure proper state reset
-    const characterService = getContainer().resolve<ICharacterService>('CharacterService');
-    characterService.getCharacter(characterId!).then(() => {
-      console.log('Character data refreshed after battle');
-    }).catch(err => {
-      console.error('Failed to refresh character data:', err);
-    });
   };
   
   // Handle direct battle with enemy
