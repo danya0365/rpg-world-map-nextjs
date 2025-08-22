@@ -11,10 +11,7 @@ import { IEnemyService } from "../../../domain/interfaces/IEnemyService";
 import { IMonsterService } from "../../../domain/interfaces/IMonsterService";
 import { IWorldMapService } from "../../../domain/interfaces/IWorldMapService";
 import { ISoundService } from "../../../domain/interfaces/ISoundService";
-import {
-  getContainer,
-  setupDependencies,
-} from "../../../infrastructure/config/DIContainer";
+import { getContainer } from "../../../infrastructure/config/DIContainer";
 import { Monster, MonsterData } from "../../../domain/entities/Monster";
 import { MonsterRepository } from "../../../domain/repositories/MonsterRepository";
 import { LocalStorageDebugger } from "../../../utils/helpers/LocalStorageDebugger";
@@ -32,22 +29,13 @@ interface GameControllerProps {
   worldMapId?: string;
 }
 
-const GameController: React.FC<GameControllerProps> = ({
-  characterId: initialCharacterId,
-  worldMapId: initialWorldMapId,
-}) => {
-  // Initialize DI container
-  useEffect(() => {
-    setupDependencies();
-  }, []);
-
+const GameController = ({
+  characterId: initialCharId,
+  worldMapId: initialMapId,
+}: GameControllerProps) => {
   const [gameState, setGameState] = useState<GameState>("map");
-  const [characterId, setCharacterId] = useState<string | null>(
-    initialCharacterId || null
-  );
-  const [worldMapId, setWorldMapId] = useState<string | null>(
-    initialWorldMapId || null
-  );
+  const [characterId, setCharacterId] = useState<string | null>(initialCharId || null);
+  const [worldMapId, setWorldMapId] = useState<string | null>(initialMapId || null);
   const [battleState, setBattleState] = useState<BattleState | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +74,24 @@ const GameController: React.FC<GameControllerProps> = ({
         console.log("[DEBUG] GameController - Initial character ID:", charId);
         console.log("[DEBUG] GameController - Initial world map ID:", mapId);
 
-        // Check if we have any characters in localStorage first
+        // Check if we have any world maps in localStorage first
+        console.log(
+          "[DEBUG] GameController - Checking for existing world maps in localStorage"
+        );
+        const allWorldMaps = await worldMapService.getAllWorldMaps();
+        console.log(`[DEBUG] GameController - Found ${allWorldMaps.length} existing world maps`);
+        
+        // If we have existing world maps but no mapId, use the first one
+        if (!mapId && allWorldMaps.length > 0) {
+          mapId = allWorldMaps[0].getId();
+          setWorldMapId(mapId);
+          console.log(
+            "[DEBUG] GameController - Using existing world map with ID:",
+            mapId
+          );
+        }
+
+        // Check if we have any characters in localStorage
         console.log(
           "[DEBUG] GameController - Checking for existing characters in localStorage"
         );
@@ -125,7 +130,7 @@ const GameController: React.FC<GameControllerProps> = ({
           });
 
           // Directly check localStorage for this character
-          LocalStorageDebugger.inspectCharacter(charId);
+          LocalStorageDebugger.inspectCharacter(charId as string);
         } else {
           // Load existing character and log its stats
           console.log(
@@ -137,7 +142,7 @@ const GameController: React.FC<GameControllerProps> = ({
               "Character ID is null in a condition where it should not be null"
             );
           }
-          const existingCharacter = await characterService.getCharacter(charId);
+          const existingCharacter = await characterService.getCharacter(charId as string);
 
           if (existingCharacter) {
             const stats = existingCharacter.getStats();
@@ -151,7 +156,7 @@ const GameController: React.FC<GameControllerProps> = ({
             });
 
             // Directly check localStorage for this character
-            LocalStorageDebugger.inspectCharacter(charId);
+            LocalStorageDebugger.inspectCharacter(charId as string);
           } else {
             console.error(
               "[DEBUG] GameController - Failed to load existing character:",
@@ -172,24 +177,79 @@ const GameController: React.FC<GameControllerProps> = ({
           }
         }
 
-        // Create default world map if not provided
+        // Get character's current position if it exists
+        let characterPosition = null;
+        if (charId) {
+          const character = await characterService.getCharacter(charId as string);
+          if (character) {
+            characterPosition = character.getPosition();
+            console.log("[DEBUG] GameController - Character current position:", characterPosition);
+          }
+        }
+
+        // Check if we already have a world map in localStorage
         if (!mapId) {
-          const defaultWorldMap = await worldMapService.createWorldMap(
-            "Eldoria",
-            100,
-            100
-          );
-          mapId = defaultWorldMap.getId();
-          setWorldMapId(mapId);
+          // No specific map ID provided, check if we have any maps
+          if (allWorldMaps.length > 0) {
+            // Use the first existing map
+            mapId = allWorldMaps[0].getId();
+            setWorldMapId(mapId);
+            console.log("[DEBUG] GameController - Using existing world map with ID:", mapId);
+          } else {
+            // No maps exist, create a new one
+            console.log("[DEBUG] GameController - No world map found, creating default world map");
+            const defaultWorldMap = await worldMapService.createWorldMap(
+              "Eldoria",
+              100,
+              100
+            );
+            mapId = defaultWorldMap.getId();
+            setWorldMapId(mapId);
+          }
+        } else {
+          // Specific map ID provided, verify it exists
+          const mapExists = allWorldMaps.some(map => map.getId() === mapId);
+          if (!mapExists) {
+            console.log(`[DEBUG] GameController - Specified map ID ${mapId} not found, creating new map`);
+            const defaultWorldMap = await worldMapService.createWorldMap(
+              "Eldoria",
+              100,
+              100
+            );
+            mapId = defaultWorldMap.getId();
+            setWorldMapId(mapId);
+          } else {
+            console.log(`[DEBUG] GameController - Using specified map ID ${mapId}`);
+          }
+        }
 
-          // Set character position on the map - start at the central town
-          // We know charId is not null here
-          await characterService.moveCharacter(charId as string, {
-            x: 50,
-            y: 50,
-            worldMapId: mapId as string,
-          });
+        // Handle character position
+        if (charId) {
+          // Check if character has a valid position
+          if (characterPosition && characterPosition.worldMapId === mapId) {
+            // Character already has correct position on this map
+            console.log(`[DEBUG] GameController - Character already positioned at (${characterPosition.x}, ${characterPosition.y}) on map ${mapId}`);
+          } else if (characterPosition && characterPosition.x !== undefined && characterPosition.y !== undefined) {
+            // Character has position but on different map or needs update
+            await characterService.moveCharacter(charId as string, {
+              x: characterPosition.x,
+              y: characterPosition.y,
+              worldMapId: mapId as string,
+            });
+            console.log(`[DEBUG] GameController - Updated character position to (${characterPosition.x}, ${characterPosition.y}) on map ${mapId}`);
+          } else {
+            // No valid position, set to default position
+            await characterService.moveCharacter(charId as string, {
+              x: 50,
+              y: 50,
+              worldMapId: mapId as string,
+            });
+            console.log(`[DEBUG] GameController - Set default character position to (50, 50) on map ${mapId}`);
+          }
+        }
 
+        // Create locations only if this is a new map
+        if (allWorldMaps.length === 0) {
           // Create diverse locations on the map with varied descriptions and encounter rates
 
           // Towns and settlements
@@ -419,26 +479,28 @@ const GameController: React.FC<GameControllerProps> = ({
             { location: towerLocation, x: 60, y: 40, name: "Astral Spire" },
             { location: groveLocation, x: 30, y: 55, name: "Sacred Grove" },
             { location: portalLocation, x: 75, y: 45, name: "Voidrift" },
-          ];
+            ];
 
-          for (const { location, x, y, name } of locationsToAdd) {
-            try {
-              await worldMapService.addLocationToMap(
-                mapId,
-                location.getId(),
-                x,
-                y
-              );
-              console.log(`Added ${name} location to map at (${x}, ${y})`);
-            } catch (error) {
-              console.error(
-                `Failed to add ${name} location: ${
-                  error instanceof Error ? error.message : "Unknown error"
-                }`
-              );
+            for (const { location, x, y, name } of locationsToAdd) {
+              try {
+                await worldMapService.addLocationToMap(
+                  mapId,
+                  location.getId(),
+                  x,
+                  y
+                );
+                console.log(`Added ${name} location to map at (${x}, ${y})`);
+              } catch (error) {
+                console.error(
+                  `Failed to add ${name} location: ${
+                    error instanceof Error ? error.message : "Unknown error"
+                  }`
+                );
+              }
             }
+          } else {
+            console.log("[DEBUG] GameController - Using existing world map, skipping location and monster creation");
           }
-        }
 
         setLoading(false);
       } catch (err) {
@@ -449,6 +511,7 @@ const GameController: React.FC<GameControllerProps> = ({
       }
     };
 
+    // Call the initialization function
     initializeGame();
   }, [characterId, worldMapId]);
 
