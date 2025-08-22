@@ -15,6 +15,8 @@ export class CharacterService implements ICharacterService {
       experience: 0,
       health: 100,
       maxHealth: 100,
+      mana: 50,
+      maxMana: 50,
       attack: 10,
       defense: 5,
       speed: 5
@@ -33,7 +35,9 @@ export class CharacterService implements ICharacterService {
       stats,
       position,
       inventory: [],
-      allies: []
+      allies: [],
+      skills: [],
+      skillCooldowns: {}
     });
     
     await this.characterRepository.save(character);
