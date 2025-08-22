@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { Monster, MonsterData } from "../../../domain/entities/Monster";
 import {
   BattleResult,
   BattleState,
@@ -9,17 +10,13 @@ import {
 import { ICharacterService } from "../../../domain/interfaces/ICharacterService";
 import { IEnemyService } from "../../../domain/interfaces/IEnemyService";
 import { IMonsterService } from "../../../domain/interfaces/IMonsterService";
-import { IWorldMapService } from "../../../domain/interfaces/IWorldMapService";
 import { ISoundService } from "../../../domain/interfaces/ISoundService";
-import { getContainer } from "../../../infrastructure/config/DIContainer";
-import { Monster, MonsterData } from "../../../domain/entities/Monster";
+import { IWorldMapService } from "../../../domain/interfaces/IWorldMapService";
 import { MonsterRepository } from "../../../domain/repositories/MonsterRepository";
-import { LocalStorageDebugger } from "../../../utils/helpers/LocalStorageDebugger";
+import { getContainer } from "../../../infrastructure/config/DIContainer";
 import { CharacterPersistenceTest } from "../../../utils/helpers/CharacterPersistenceTest";
+import { LocalStorageDebugger } from "../../../utils/helpers/LocalStorageDebugger";
 import { CharacterMigration } from "../../../utils/migrations/CharacterMigration";
-import BattleScreen from "./BattleScreen";
-import LocationDetails from "./LocationDetails";
-import WorldMap from "./WorldMap";
 
 // Game states
 type GameState = "map" | "battle" | "location";
@@ -29,13 +26,17 @@ interface GameControllerProps {
   worldMapId?: string;
 }
 
-const GameController = ({
+const useGameController = ({
   characterId: initialCharId,
   worldMapId: initialMapId,
 }: GameControllerProps) => {
   const [gameState, setGameState] = useState<GameState>("map");
-  const [characterId, setCharacterId] = useState<string | null>(initialCharId || null);
-  const [worldMapId, setWorldMapId] = useState<string | null>(initialMapId || null);
+  const [characterId, setCharacterId] = useState<string | null>(
+    initialCharId || null
+  );
+  const [worldMapId, setWorldMapId] = useState<string | null>(
+    initialMapId || null
+  );
   const [battleState, setBattleState] = useState<BattleState | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,8 +80,10 @@ const GameController = ({
           "[DEBUG] GameController - Checking for existing world maps in localStorage"
         );
         const allWorldMaps = await worldMapService.getAllWorldMaps();
-        console.log(`[DEBUG] GameController - Found ${allWorldMaps.length} existing world maps`);
-        
+        console.log(
+          `[DEBUG] GameController - Found ${allWorldMaps.length} existing world maps`
+        );
+
         // If we have existing world maps but no mapId, use the first one
         if (!mapId && allWorldMaps.length > 0) {
           mapId = allWorldMaps[0].getId();
@@ -142,7 +145,9 @@ const GameController = ({
               "Character ID is null in a condition where it should not be null"
             );
           }
-          const existingCharacter = await characterService.getCharacter(charId as string);
+          const existingCharacter = await characterService.getCharacter(
+            charId as string
+          );
 
           if (existingCharacter) {
             const stats = existingCharacter.getStats();
@@ -180,10 +185,15 @@ const GameController = ({
         // Get character's current position if it exists
         let characterPosition = null;
         if (charId) {
-          const character = await characterService.getCharacter(charId as string);
+          const character = await characterService.getCharacter(
+            charId as string
+          );
           if (character) {
             characterPosition = character.getPosition();
-            console.log("[DEBUG] GameController - Character current position:", characterPosition);
+            console.log(
+              "[DEBUG] GameController - Character current position:",
+              characterPosition
+            );
           }
         }
 
@@ -194,10 +204,15 @@ const GameController = ({
             // Use the first existing map
             mapId = allWorldMaps[0].getId();
             setWorldMapId(mapId);
-            console.log("[DEBUG] GameController - Using existing world map with ID:", mapId);
+            console.log(
+              "[DEBUG] GameController - Using existing world map with ID:",
+              mapId
+            );
           } else {
             // No maps exist, create a new one
-            console.log("[DEBUG] GameController - No world map found, creating default world map");
+            console.log(
+              "[DEBUG] GameController - No world map found, creating default world map"
+            );
             const defaultWorldMap = await worldMapService.createWorldMap(
               "Eldoria",
               100,
@@ -208,9 +223,11 @@ const GameController = ({
           }
         } else {
           // Specific map ID provided, verify it exists
-          const mapExists = allWorldMaps.some(map => map.getId() === mapId);
+          const mapExists = allWorldMaps.some((map) => map.getId() === mapId);
           if (!mapExists) {
-            console.log(`[DEBUG] GameController - Specified map ID ${mapId} not found, creating new map`);
+            console.log(
+              `[DEBUG] GameController - Specified map ID ${mapId} not found, creating new map`
+            );
             const defaultWorldMap = await worldMapService.createWorldMap(
               "Eldoria",
               100,
@@ -219,7 +236,9 @@ const GameController = ({
             mapId = defaultWorldMap.getId();
             setWorldMapId(mapId);
           } else {
-            console.log(`[DEBUG] GameController - Using specified map ID ${mapId}`);
+            console.log(
+              `[DEBUG] GameController - Using specified map ID ${mapId}`
+            );
           }
         }
 
@@ -228,15 +247,23 @@ const GameController = ({
           // Check if character has a valid position
           if (characterPosition && characterPosition.worldMapId === mapId) {
             // Character already has correct position on this map
-            console.log(`[DEBUG] GameController - Character already positioned at (${characterPosition.x}, ${characterPosition.y}) on map ${mapId}`);
-          } else if (characterPosition && characterPosition.x !== undefined && characterPosition.y !== undefined) {
+            console.log(
+              `[DEBUG] GameController - Character already positioned at (${characterPosition.x}, ${characterPosition.y}) on map ${mapId}`
+            );
+          } else if (
+            characterPosition &&
+            characterPosition.x !== undefined &&
+            characterPosition.y !== undefined
+          ) {
             // Character has position but on different map or needs update
             await characterService.moveCharacter(charId as string, {
               x: characterPosition.x,
               y: characterPosition.y,
               worldMapId: mapId as string,
             });
-            console.log(`[DEBUG] GameController - Updated character position to (${characterPosition.x}, ${characterPosition.y}) on map ${mapId}`);
+            console.log(
+              `[DEBUG] GameController - Updated character position to (${characterPosition.x}, ${characterPosition.y}) on map ${mapId}`
+            );
           } else {
             // No valid position, set to default position
             await characterService.moveCharacter(charId as string, {
@@ -244,7 +271,9 @@ const GameController = ({
               y: 50,
               worldMapId: mapId as string,
             });
-            console.log(`[DEBUG] GameController - Set default character position to (50, 50) on map ${mapId}`);
+            console.log(
+              `[DEBUG] GameController - Set default character position to (50, 50) on map ${mapId}`
+            );
           }
         }
 
@@ -479,28 +508,30 @@ const GameController = ({
             { location: towerLocation, x: 60, y: 40, name: "Astral Spire" },
             { location: groveLocation, x: 30, y: 55, name: "Sacred Grove" },
             { location: portalLocation, x: 75, y: 45, name: "Voidrift" },
-            ];
+          ];
 
-            for (const { location, x, y, name } of locationsToAdd) {
-              try {
-                await worldMapService.addLocationToMap(
-                  mapId,
-                  location.getId(),
-                  x,
-                  y
-                );
-                console.log(`Added ${name} location to map at (${x}, ${y})`);
-              } catch (error) {
-                console.error(
-                  `Failed to add ${name} location: ${
-                    error instanceof Error ? error.message : "Unknown error"
-                  }`
-                );
-              }
+          for (const { location, x, y, name } of locationsToAdd) {
+            try {
+              await worldMapService.addLocationToMap(
+                mapId,
+                location.getId(),
+                x,
+                y
+              );
+              console.log(`Added ${name} location to map at (${x}, ${y})`);
+            } catch (error) {
+              console.error(
+                `Failed to add ${name} location: ${
+                  error instanceof Error ? error.message : "Unknown error"
+                }`
+              );
             }
-          } else {
-            console.log("[DEBUG] GameController - Using existing world map, skipping location and monster creation");
           }
+        } else {
+          console.log(
+            "[DEBUG] GameController - Using existing world map, skipping location and monster creation"
+          );
+        }
 
         setLoading(false);
       } catch (err) {
@@ -811,94 +842,21 @@ const GameController = ({
     setGameState("map");
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen font-kanit">
-        <div className="text-xl text-amber-400 animate-pulse">
-          Loading your adventure...
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-900/30 text-red-300 p-6 border-2 border-red-700 rounded-lg shadow-lg font-kanit max-w-md mx-auto my-8">
-        <h3 className="text-xl font-bold mb-2 text-red-200">Quest Error</h3>
-        <p>{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="rpg-button mt-4"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
-  if (!characterId || !worldMapId) {
-    return (
-      <div className="bg-red-900/30 text-red-300 p-6 border-2 border-red-700 rounded-lg shadow-lg font-kanit max-w-md mx-auto my-8">
-        <h3 className="text-xl font-bold mb-2 text-red-200">
-          Game Initialization Failed
-        </h3>
-        <p>Unable to create character or world map.</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="rpg-button mt-4"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="container mx-auto p-4 font-kanit">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-amber-600 drop-shadow-md">
-          RPG World Map Game
-        </h1>
-
-        <div className="flex gap-2">
-          <button className="rpg-button text-sm">Character</button>
-          <button className="rpg-button text-sm">Inventory</button>
-        </div>
-      </div>
-
-      <div className="bg-slate-800/50 border-2 border-amber-700/50 rounded-lg p-4 shadow-lg">
-        {gameState === "map" && (
-          <WorldMap
-            characterId={characterId}
-            worldMapId={worldMapId}
-            onEncounter={handleEncounter}
-            onLocationEnter={handleLocationEnter}
-            onEnemyBattle={handleEnemyBattle}
-          />
-        )}
-
-        {gameState === "battle" && battleState && (
-          <BattleScreen
-            battleState={battleState}
-            onBattleEnd={handleBattleEnd}
-          />
-        )}
-
-        {gameState === "location" && locationId && (
-          <LocationDetails
-            locationId={locationId}
-            onClose={handleLocationClose}
-          />
-        )}
-      </div>
-
-      <div className="mt-4 text-sm text-slate-400 text-center">
-        <p>
-          Game State: <span className="text-amber-400">{gameState}</span>
-        </p>
-      </div>
-    </div>
-  );
+  return {
+    gameState,
+    characterId,
+    worldMapId,
+    battleState,
+    locationId,
+    loading,
+    error,
+    enemiesSpawned,
+    handleEncounter,
+    handleBattleEnd,
+    handleEnemyBattle,
+    handleLocationEnter,
+    handleLocationClose,
+  };
 };
 
-export default GameController;
+export default useGameController;
