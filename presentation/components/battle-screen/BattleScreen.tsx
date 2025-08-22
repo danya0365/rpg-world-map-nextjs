@@ -1,21 +1,27 @@
-import React from 'react';
-import { BattleState, BattleResult } from '../../../domain/interfaces/IBattleService';
-import SkillsMenu from './SkillsMenu';
-import { useBattleState } from '../../hooks/useBattleState';
-import { useBattleActions } from '../../hooks/useBattleActions';
-import { useBattleSound } from '../../hooks/useBattleSound';
-import CharacterStats from './battle-ui/CharacterStats';
-import MonsterStats from './battle-ui/MonsterStats';
-import BattleLog from './battle-ui/BattleLog';
-import BattleResultComponent from './battle-ui/BattleResult';
-import BattleActions from './battle-ui/BattleActions';
+import React from "react";
+import {
+  BattleResult,
+  BattleState,
+} from "../../../domain/interfaces/IBattleService";
+import { useBattleActions } from "../../hooks/useBattleActions";
+import { useBattleSound } from "../../hooks/useBattleSound";
+import { useBattleState } from "../../hooks/useBattleState";
+import BattleActions from "./battle-ui/BattleActions";
+import BattleLog from "./battle-ui/BattleLog";
+import BattleResultComponent from "./battle-ui/BattleResult";
+import CharacterStats from "./battle-ui/CharacterStats";
+import MonsterStats from "./battle-ui/MonsterStats";
+import SkillsMenu from "./SkillsMenu";
 
 interface BattleScreenProps {
   battleState: BattleState;
   onBattleEnd: (result: BattleResult) => void;
 }
 
-const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleState, onBattleEnd }) => {
+const BattleScreen: React.FC<BattleScreenProps> = ({
+  battleState: initialBattleState,
+  onBattleEnd,
+}) => {
   // Use the battle state hook to manage battle state and statistics
   const {
     battleState,
@@ -37,25 +43,18 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
     setCriticalHits,
     itemsUsed,
     skillService,
-    soundService
-  } = useBattleState(initialBattleState);
-  
-  // Use the battle sound hook for UI sound effects
-  const {
-    playMenuOpenSound,
-    playMenuCloseSound,
-    playButtonSound
-  } = useBattleSound({
     soundService,
-    battleState
-  });
-  
+  } = useBattleState(initialBattleState);
+
+  // Use the battle sound hook for UI sound effects
+  const { playMenuOpenSound, playMenuCloseSound, playButtonSound } =
+    useBattleSound({
+      soundService,
+      battleState,
+    });
+
   // Use the battle actions hook for handling battle actions
-  const {
-    handleAction,
-    handleSkillAction,
-    handleFlee
-  } = useBattleActions({
+  const { handleAction, handleSkillAction, handleFlee } = useBattleActions({
     battleState,
     setBattleState,
     isProcessing,
@@ -67,27 +66,27 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
     setCriticalHits,
     soundService,
     skillService,
-    onBattleEnd
+    onBattleEnd,
   });
-  
+
   // Handle opening skills menu
   const handleSkillsOpen = () => {
     setShowSkillsMenu(true);
     playMenuOpenSound();
   };
-  
+
   // Handle closing skills menu
   const handleSkillsClose = () => {
     setShowSkillsMenu(false);
     playMenuCloseSound();
   };
-  
+
   // Handle skill selection
   const handleSkillSelect = (skillId: string) => {
     handleSkillsClose();
     handleSkillAction(skillId);
   };
-  
+
   // Handle battle end confirmation
   const handleBattleEnd = () => {
     playMenuCloseSound();
@@ -98,14 +97,13 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 p-6 font-kanit">
-      <h2 className="text-3xl font-kanit font-bold mb-6 text-center text-amber-400 border-b-2 border-amber-500/50 pb-3">⚔️ Battle ⚔️</h2>
-      
+      <h2 className="text-3xl font-kanit font-bold mb-6 text-center text-amber-400 border-b-2 border-amber-500/50 pb-3">
+        ⚔️ Battle ⚔️
+      </h2>
+
       {/* Battle Log Component */}
-      <BattleLog 
-        log={battleState.log} 
-        isProcessing={isProcessing} 
-      />
-      
+      <BattleLog log={battleState.log} isProcessing={isProcessing} />
+
       {/* Character and Monster Stats */}
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         <div className="transform transition-all hover:scale-105 duration-300">
@@ -115,10 +113,10 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
           <MonsterStats monster={battleState.monster} />
         </div>
       </div>
-      
+
       {/* Battle Result or Battle Actions */}
       {battleState.isOver ? (
-        <BattleResultComponent 
+        <BattleResultComponent
           result={battleState.result!}
           battleSummary={battleSummary}
           showDetailedResults={showDetailedResults}
@@ -130,11 +128,11 @@ const BattleScreen: React.FC<BattleScreenProps> = ({ battleState: initialBattleS
           currentLevel={battleState.currentLevel}
         />
       ) : (
-        <BattleActions 
+        <BattleActions
           isProcessing={isProcessing}
           availableSkills={availableSkills}
-          onAttack={() => handleAction('attack')}
-          onDefend={() => handleAction('defend')}
+          onAttack={() => handleAction("attack")}
+          onDefend={() => handleAction("defend")}
           onSkillsOpen={handleSkillsOpen}
           onFlee={handleFlee}
           soundService={soundService}

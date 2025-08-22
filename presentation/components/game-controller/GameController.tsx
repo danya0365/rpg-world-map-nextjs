@@ -1,7 +1,7 @@
 "use client";
 
-import BattleScreen from "../world-map/BattleScreen";
-import LocationDetails from "../world-map/LocationDetails";
+import BattleScreen from "../battle-screen/BattleScreen";
+import LocationDetails from "../location-details/LocationDetails";
 import WorldMap from "../world-map/WorldMap";
 import useGameController from "./useGameController";
 
