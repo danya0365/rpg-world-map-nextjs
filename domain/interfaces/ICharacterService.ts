@@ -2,7 +2,7 @@ import { Character, Position, Stats } from '../entities/Character';
 
 export interface ICharacterService {
   createCharacter(name: string): Promise<Character>;
-  getCharacter(id: string): Promise<Character | null>;
+  getCharacter(id: string, forceReload?: boolean): Promise<Character | null>;
   getAllCharacters(): Promise<Character[]>;
   moveCharacter(id: string, newPosition: Partial<Position>): Promise<Character | null>;
   addExperience(id: string, amount: number): Promise<Character | null>;

@@ -78,8 +78,21 @@ export class Character {
   }
 
   public addExperience(exp: number): void {
-    this.stats.experience += exp;
+    // Ensure current experience is a number
+    if (typeof this.stats.experience !== 'number') {
+      console.warn(`[DEBUG] Character.addExperience - Experience was not a number: ${this.stats.experience}, fixing...`);
+      this.stats.experience = Number(this.stats.experience) || 0;
+    }
+    
+    // Ensure exp parameter is a number
+    const expToAdd = typeof exp === 'number' ? exp : Number(exp) || 0;
+    
+    console.log(`[DEBUG] Character.addExperience - Before: ${this.stats.experience}, Adding: ${expToAdd}`);
+    this.stats.experience += expToAdd;
+    console.log(`[DEBUG] Character.addExperience - After: ${this.stats.experience}`);
+    
     this.checkLevelUp();
+    console.log(`[DEBUG] Character.addExperience - After level check: Level ${this.stats.level}, Exp ${this.stats.experience}`);
   }
 
   public takeDamage(amount: number): void {
@@ -195,15 +208,43 @@ export class Character {
   }
 
   public toJSON(): CharacterData {
-    return {
+    console.log('[DEBUG] Character.toJSON - Serializing character data');
+    
+    // Ensure stats are properly structured before serializing
+    const stats = { ...this.stats };
+    
+    // Explicitly ensure experience is a number
+    if (typeof stats.experience !== 'number') {
+      console.warn('[DEBUG] Character.toJSON - Experience was not a number:', stats.experience);
+      stats.experience = Number(stats.experience) || 0;
+    }
+    
+    // Explicitly ensure level is a number
+    if (typeof stats.level !== 'number') {
+      console.warn('[DEBUG] Character.toJSON - Level was not a number:', stats.level);
+      stats.level = Number(stats.level) || 1;
+    }
+    
+    const data = {
       id: this.id,
       name: this.name,
-      stats: { ...this.stats },
+      stats,
       position: { ...this.position },
       inventory: Array.isArray(this.inventory) ? [...this.inventory] : [],
       allies: Array.isArray(this.allies) ? [...this.allies] : [],
       skills: Array.isArray(this.skills) ? [...this.skills] : [],
       skillCooldowns: this.skillCooldowns ? { ...this.skillCooldowns } : {}
     };
+    
+    console.log('[DEBUG] Character.toJSON - Serialized data:', {
+      id: data.id,
+      name: data.name,
+      level: data.stats.level,
+      experience: data.stats.experience,
+      health: data.stats.health,
+      maxHealth: data.stats.maxHealth
+    });
+    
+    return data;
   }
 }

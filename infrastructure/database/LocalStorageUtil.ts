@@ -5,40 +5,61 @@ export class LocalStorageUtil {
       localStorage.setItem(testKey, testKey);
       localStorage.removeItem(testKey);
       return true;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
   public static async getItem<T>(key: string): Promise<T | null> {
+    console.log(`[DEBUG] LocalStorageUtil.getItem - Attempting to get key: ${key}`);
+    
     if (!this.isLocalStorageAvailable()) {
-      console.error('LocalStorage is not available');
+      console.error('[DEBUG] LocalStorageUtil.getItem - LocalStorage is not available');
       return null;
     }
 
     const item = localStorage.getItem(key);
     if (!item) {
+      console.log(`[DEBUG] LocalStorageUtil.getItem - No item found for key: ${key}`);
       return null;
     }
 
+    console.log(`[DEBUG] LocalStorageUtil.getItem - Found item for key: ${key}, length: ${item.length} characters`);
+    
     try {
-      return JSON.parse(item) as T;
+      const parsedItem = JSON.parse(item) as T;
+      console.log(`[DEBUG] LocalStorageUtil.getItem - Successfully parsed item for key: ${key}`);
+      return parsedItem;
     } catch (e) {
-      console.error(`Error parsing item with key ${key}:`, e);
+      console.error(`[DEBUG] LocalStorageUtil.getItem - Error parsing item with key ${key}:`, e);
       return null;
     }
   }
 
-  public static async setItem(key: string, value: any): Promise<void> {
+  public static async setItem(key: string, value: unknown): Promise<void> {
+    console.log(`[DEBUG] LocalStorageUtil.setItem - Attempting to save key: ${key}`);
+    
     if (!this.isLocalStorageAvailable()) {
-      console.error('LocalStorage is not available');
+      console.error('[DEBUG] LocalStorageUtil.setItem - LocalStorage is not available');
       return;
     }
 
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      const valueStr = JSON.stringify(value);
+      console.log(`[DEBUG] LocalStorageUtil.setItem - Stringified value length: ${valueStr.length} characters`);
+      
+      // Save to localStorage
+      localStorage.setItem(key, valueStr);
+      
+      // Verify the save
+      const savedItem = localStorage.getItem(key);
+      if (savedItem) {
+        console.log(`[DEBUG] LocalStorageUtil.setItem - Successfully saved and verified key: ${key}`);
+      } else {
+        console.error(`[DEBUG] LocalStorageUtil.setItem - Failed to verify save for key: ${key}`);
+      }
     } catch (e) {
-      console.error(`Error setting item with key ${key}:`, e);
+      console.error(`[DEBUG] LocalStorageUtil.setItem - Error setting item with key ${key}:`, e);
     }
   }
 
