@@ -126,6 +126,7 @@ const BattleScreen: React.FC<BattleScreenProps> = ({
           leveledUp={battleState.leveledUp}
           previousLevel={battleState.previousLevel}
           currentLevel={battleState.currentLevel}
+          levelUpRewards={battleState.levelUpRewards}
         />
       ) : (
         <BattleActions

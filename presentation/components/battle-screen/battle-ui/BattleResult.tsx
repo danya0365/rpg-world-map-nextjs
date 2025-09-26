@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BattleResult } from '../../../../domain/interfaces/IBattleService';
 import { ISoundService } from '../../../../domain/interfaces/ISoundService';
+import { LevelUpReward } from '../../../../domain/services/LevelUpService';
+import LevelUpModal from './LevelUpModal';
 
 interface BattleResultProps {
   result: BattleResult;
@@ -20,6 +22,7 @@ interface BattleResultProps {
   leveledUp?: boolean;
   previousLevel?: number;
   currentLevel?: number;
+  levelUpRewards?: LevelUpReward;
 }
 
 const BattleResultComponent: React.FC<BattleResultProps> = ({ 
@@ -31,28 +34,33 @@ const BattleResultComponent: React.FC<BattleResultProps> = ({
   battleLog = [],
   leveledUp = false,
   previousLevel = 1,
-  currentLevel = 1
+  currentLevel = 1,
+  levelUpRewards
 }) => {
-  const [showLevelUpAnimation, setShowLevelUpAnimation] = useState(false);
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+  
+  // Default level up rewards if not provided
+  const defaultLevelUpRewards: LevelUpReward = {
+    statIncreases: {
+      health: 10,
+      attack: 2,
+      defense: 2,
+      speed: 1,
+      mana: 5
+    },
+    newSkills: []
+  };
   
   useEffect(() => {
     if (leveledUp) {
-      // Play level up sound
-      soundService.playSound('level-up', 0.7).catch(err => {
-        console.warn('Failed to play level up sound:', err);
-      });
-      
-      // Show level up animation
-      setShowLevelUpAnimation(true);
-      
-      // Hide animation after 3 seconds
+      // Show level up modal with a slight delay
       const timer = setTimeout(() => {
-        setShowLevelUpAnimation(false);
-      }, 3000);
+        setShowLevelUpModal(true);
+      }, 500);
       
       return () => clearTimeout(timer);
     }
-  }, [leveledUp, soundService]);
+  }, [leveledUp]);
   // Add null check to prevent destructuring errors
   if (!result) {
     console.error('Battle result is null or undefined');
@@ -106,7 +114,7 @@ const BattleResultComponent: React.FC<BattleResultProps> = ({
             </div>
             
             {leveledUp && (
-              <div className={`text-yellow-400 font-bold ${showLevelUpAnimation ? 'animate-pulse text-2xl' : ''} transition-all duration-500 my-2`}>
+              <div className="text-yellow-400 font-bold transition-all duration-500 my-2">
                 <span className="text-yellow-400">🌟</span> LEVEL UP! <span className="text-yellow-400">🌟</span>
                 <div className="text-green-400 text-lg">
                   Level {previousLevel} → Level {currentLevel}
@@ -158,6 +166,17 @@ const BattleResultComponent: React.FC<BattleResultProps> = ({
           Continue
         </button>
       </div>
+      
+      {/* Level Up Modal */}
+      {showLevelUpModal && leveledUp && (
+        <LevelUpModal
+          previousLevel={previousLevel}
+          currentLevel={currentLevel}
+          rewards={levelUpRewards || defaultLevelUpRewards}
+          onClose={() => setShowLevelUpModal(false)}
+          soundService={soundService}
+        />
+      )}
     </div>
   );
 };

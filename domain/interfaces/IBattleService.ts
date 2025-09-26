@@ -1,6 +1,7 @@
 import { Character } from '../entities/Character';
 import { Monster } from '../entities/Monster';
 import { Item } from '../entities/Item';
+import { LevelUpReward } from '../services/LevelUpService';
 
 export interface BattleResult {
   victory: boolean;
@@ -20,6 +21,7 @@ export interface BattleState {
   leveledUp?: boolean;
   previousLevel?: number;
   currentLevel?: number;
+  levelUpRewards?: LevelUpReward;
 }
 
 export interface IBattleService {

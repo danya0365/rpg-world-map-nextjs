@@ -12,6 +12,7 @@ import { IEnemyService } from "../../../domain/interfaces/IEnemyService";
 import { IMonsterService } from "../../../domain/interfaces/IMonsterService";
 import { ISoundService } from "../../../domain/interfaces/ISoundService";
 import { IWorldMapService } from "../../../domain/interfaces/IWorldMapService";
+import { LevelUpService, LevelUpReward } from "../../../domain/services/LevelUpService";
 import { MonsterRepository } from "../../../domain/repositories/MonsterRepository";
 import { getContainer } from "../../../infrastructure/config/DIContainer";
 import { CharacterPersistenceTest } from "../../../utils/helpers/CharacterPersistenceTest";
@@ -615,6 +616,8 @@ const useGameController = ({
         // Get character service to update experience
         const characterService =
           getContainer().resolve<ICharacterService>("CharacterService");
+        const soundService =
+          getContainer().resolve<ISoundService>("SoundService");
 
         // Get character before adding experience to check for level up
         console.log(
@@ -710,33 +713,56 @@ const useGameController = ({
           characterId!,
           true
         );
-        if (reloadedCharacter) {
-          const reloadedStats = reloadedCharacter.getStats();
-          console.log("[DEBUG] Reloaded character stats:", {
-            id: characterId,
-            level: reloadedStats.level,
-            experience: reloadedStats.experience,
-            maxHealth: reloadedStats.maxHealth,
-          });
+        if (!reloadedCharacter) {
+          throw new Error(`Character ${characterId} not found after reload`);
         }
+
+        const reloadedStats = reloadedCharacter.getStats();
+        console.log("[DEBUG] Reloaded character stats:", {
+          id: characterId,
+          level: reloadedStats.level,
+          experience: reloadedStats.experience,
+          maxHealth: reloadedStats.maxHealth,
+        });
 
         // Check if level up occurred
         const leveledUp = currentLevel > previousLevel;
+        
+        let levelUpRewards: LevelUpReward | null = null;
+        
         if (leveledUp) {
           console.log(`Level up! ${previousLevel} -> ${currentLevel}`);
-          // Update battle state with level up information
+          
+          // Use LevelUpService to calculate rewards
+          const levelUpService = new LevelUpService();
+          levelUpRewards = levelUpService.calculateLevelUpRewards(
+            reloadedCharacter,
+            previousLevel,
+            currentLevel
+          );
+          
+          console.log("[DEBUG] Level up rewards calculated:", levelUpRewards);
+          
+          // Apply the level up rewards
+          levelUpService.applyLevelUpRewards(reloadedCharacter, levelUpRewards);
+          console.log("[DEBUG] Level up rewards applied to character");
+          
+          // Since Character entity doesn't have methods to update all stats directly,
+          // we need to manually update the character's stats here
+          // The heal() method in applyLevelUpRewards already handled the health increase
+          
+          // Update battle state with level up information and rewards
           if (battleState) {
             setBattleState({
               ...battleState,
               leveledUp: true,
               previousLevel,
               currentLevel,
+              levelUpRewards: levelUpRewards
             });
           }
 
           // Play level up sound
-          const soundService =
-            getContainer().resolve<ISoundService>("SoundService");
           soundService.playSound("level-up", 0.7).catch((err: Error) => {
             console.warn("Failed to play level up sound:", err);
           });
